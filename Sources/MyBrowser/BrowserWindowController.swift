@@ -15,9 +15,9 @@ final class BrowserWindowController: NSObject, NSTextFieldDelegate, NSWindowDele
     var sidebar: SidebarView { root.sidebar }
     var addressField: NSTextField { root.sidebar.addressBar.field }
 
-    init(dataStore: WKWebsiteDataStore, storage: Storage, downloads: DownloadManager? = nil, autosave: Bool) {
+    init(dataStore: WKWebsiteDataStore, storage: Storage, downloads: DownloadManager? = nil, zoom: ZoomStore? = nil, autosave: Bool) {
         self.storage = storage
-        tabs = TabManager(dataStore: dataStore, downloads: downloads)
+        tabs = TabManager(dataStore: dataStore, downloads: downloads, zoom: zoom)
         window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1280, height: 820),
                           styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
                           backing: .buffered, defer: false)
@@ -36,6 +36,11 @@ final class BrowserWindowController: NSObject, NSTextFieldDelegate, NSWindowDele
         if autosave { window.setFrameAutosaveName("MainWindow") }
 
         addressField.delegate = self
+        let fb = root.findBar
+        fb.field.delegate = self
+        fb.nextButton.target = self; fb.nextButton.action = #selector(findNext)
+        fb.prevButton.target = self; fb.prevButton.action = #selector(findPrevious)
+        fb.closeButton.target = self; fb.closeButton.action = #selector(closeFind)
         sidebar.backButton.target = self
         sidebar.backButton.action = #selector(goBack)
         sidebar.forwardButton.target = self
@@ -115,6 +120,7 @@ final class BrowserWindowController: NSObject, NSTextFieldDelegate, NSWindowDele
     }
 
     private func activeChanged() {
+        closeFind()
         scheduleSessionSave()
         for tab in tabs.tabs { rows[tab.id]?.isActive = tab === tabs.activeTab }
         if let tab = tabs.activeTab {
@@ -145,6 +151,55 @@ final class BrowserWindowController: NSObject, NSTextFieldDelegate, NSWindowDele
     }
 
     // MARK: 動作
+
+    // MARK: 尋找與縮放
+
+    @objc func showFind() {
+        root.findBar.isHidden = false
+        window.makeFirstResponder(root.findBar.field)
+        root.findBar.field.currentEditor()?.selectAll(nil)
+    }
+
+    @objc func closeFind() {
+        guard !root.findBar.isHidden else { return }
+        root.findBar.isHidden = true
+        root.findBar.status.stringValue = ""
+        tabs.activeTab?.webView.evaluateJavaScript("getSelection().removeAllRanges()", completionHandler: nil)
+        if root.findBar.field.currentEditor() != nil { window.makeFirstResponder(tabs.activeTab?.webView) }
+    }
+
+    @objc func findNext() { Task { await find(backwards: false) } }
+    @objc func findPrevious() { Task { await find(backwards: true) } }
+    @objc func findMenuNext() { if root.findBar.isHidden { showFind() } else { findNext() } }
+    @objc func findMenuPrevious() { if root.findBar.isHidden { showFind() } else { findPrevious() } }
+
+    /// 在目前網頁找字，回傳是否找到（會捲動並反白）。
+    @discardableResult
+    func find(_ text: String? = nil, backwards: Bool) async -> Bool {
+        let query = text ?? root.findBar.field.stringValue
+        guard let web = tabs.activeTab?.webView, !query.isEmpty else {
+            root.findBar.status.stringValue = ""
+            return false
+        }
+        let config = WKFindConfiguration()
+        config.backwards = backwards
+        config.wraps = true
+        config.caseSensitive = false
+        let found = (try? await web.find(query, configuration: config))?.matchFound ?? false
+        root.findBar.status.stringValue = found ? "" : "No matches"
+        return found
+    }
+
+    func zoom(direction: Int) {
+        guard let tab = tabs.activeTab, let host = tab.url?.host, InputNormalizer.isHTTP(tab.url) else { return }
+        let next = direction == 0 ? 1 : tabs.zoom.step(from: tab.webView.pageZoom, direction: direction)
+        tabs.zoom.set(next, for: host)
+        for other in tabs.tabs where other.url?.host?.lowercased() == host.lowercased() { other.webView.pageZoom = next }
+    }
+
+    @objc func zoomIn() { zoom(direction: 1) }
+    @objc func zoomOut() { zoom(direction: -1) }
+    @objc func zoomReset() { zoom(direction: 0) }
 
     @objc func downloadClicked() {
         tabs.downloads.revealLatest()
@@ -211,7 +266,19 @@ final class BrowserWindowController: NSObject, NSTextFieldDelegate, NSWindowDele
         return true
     }
 
+    func controlTextDidChange(_ obj: Notification) {
+        if obj.object as? NSTextField === root.findBar.field { Task { await find(backwards: false) } }
+    }
+
     func control(_ control: NSControl, textView: NSTextView, doCommandBy selector: Selector) -> Bool {
+        if control === root.findBar.field {
+            if selector == #selector(NSResponder.insertNewline(_:)) {
+                Task { await find(backwards: NSApp.currentEvent?.modifierFlags.contains(.shift) == true) }
+                return true
+            }
+            if selector == #selector(NSResponder.cancelOperation(_:)) { closeFind(); return true }
+            return false
+        }
         if selector == #selector(NSResponder.insertNewline(_:)) {
             submitAddress(addressField.stringValue)
             return true

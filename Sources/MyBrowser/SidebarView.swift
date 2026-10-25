@@ -157,6 +157,7 @@ final class SidebarView: NSView {
 final class RootView: NSView {
     let sidebar = SidebarView()
     let card = CardView()
+    let findBar = FindBar()
     var sidebarVisible = true { didSet { needsLayout = true } }
 
     override var mouseDownCanMoveWindow: Bool { true }
@@ -167,6 +168,7 @@ final class RootView: NSView {
         layer?.backgroundColor = Theme.panel.cgColor
         addSubview(sidebar)
         addSubview(card)
+        addSubview(findBar)
     }
 
     required init?(coder: NSCoder) { fatalError() }
@@ -178,6 +180,7 @@ final class RootView: NSView {
         sidebar.isHidden = !sidebarVisible
         sidebar.frame = NSRect(x: 0, y: 0, width: Theme.sidebarWidth, height: bounds.height)
         card.frame = cardFrame(sidebarWidth: sw)
+        findBar.frame = NSRect(x: card.frame.maxX - 340 - 12, y: card.frame.maxY - 36 - 12, width: 340, height: 36)
     }
 
     func cardFrame(sidebarWidth sw: CGFloat) -> NSRect {

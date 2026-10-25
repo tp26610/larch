@@ -11,6 +11,7 @@ final class Tab: NSObject, WKNavigationDelegate, WKUIDelegate {
     private(set) var favicon: NSImage?
     var onChange: ((Tab) -> Void)?
     weak var downloads: DownloadManager?
+    var zoomStore: ZoomStore?
 
     private var observations: [NSKeyValueObservation] = []
     private var faviconTask: URLSessionDataTask?
@@ -120,6 +121,7 @@ final class Tab: NSObject, WKNavigationDelegate, WKUIDelegate {
 
     func webView(_ webView: WKWebView, didCommit navigation: WKNavigation!) {
         requestedURL = nil
+        if let host = webView.url?.host, InputNormalizer.isHTTP(webView.url) { webView.pageZoom = zoomStore?.zoom(for: host) ?? 1 }
         favicon = nil
         notify()
     }

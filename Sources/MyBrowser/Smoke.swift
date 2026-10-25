@@ -60,6 +60,7 @@ final class FixtureServer: @unchecked Sendable {
         case "/b": return ("text/html; charset=utf-8", html("Page B", "<h1>B</h1>"), 0)
         case "/c": return ("text/html; charset=utf-8", html("頁面 C"), 0)
         case "/slow": return ("text/html; charset=utf-8", html("Slow Page"), 1.5)
+        case "/text": return ("text/html; charset=utf-8", html("Text Page", "<p>alpha needle beta</p>"), 0)
         case "/popup": return ("text/html; charset=utf-8", html("Popup Opener", "<a id=\"l\" href=\"/b\" target=\"_blank\">b</a>"), 0)
         case "/xss": return ("text/html; charset=utf-8", html("<img src=x onerror=document.title='pwned'>"), 0)
         case "/file": return ("text/plain", Data("hello download".utf8), 0)
@@ -104,6 +105,7 @@ enum Smoke {
     static func run(_ app: AppDelegate) async {
         setvbuf(stdout, nil, _IOLBF, 0)
         do { try await body(app) } catch { print("  FAIL exception \(error)"); failed += 1 }
+        UserDefaults.standard.removePersistentDomain(forName: "mybrowser-smoke-\(getpid())")
         print("\n\(passed) passed, \(failed) failed")
         exit(failed == 0 ? 0 : 1)
     }
@@ -279,6 +281,7 @@ enum Smoke {
         try await externalChecks(server, app)
         try await downloadChecks(server, app)
         try await errorPageChecks(server, app)
+        try await findZoomChecks(server, app)
     }
 }
 
@@ -388,5 +391,34 @@ extension Smoke {
               && ErrorPage.headline(for: cert).title == "Connection is not private"
               && !ErrorPage.html(for: cert, url: nil).lowercased().contains("proceed"))
         c.tabs.close(t)
+    }
+}
+
+extension Smoke {
+    static func findZoomChecks(_ server: FixtureServer, _ app: AppDelegate) async throws {
+        print("尋找與縮放")
+        let c = app.controller!
+        let t = c.tabs.newTab(url: server.url("/text"))
+        _ = await wait { t.pageTitle == "Text Page" }
+        check("⌘F 顯示尋找列並聚焦", press("f", .command, in: c.window) && !c.root.findBar.isHidden && c.root.findBar.field.currentEditor() != nil)
+        check("找得到", await c.find("needle", backwards: false))
+        check("找不到顯示 No matches", await !c.find("zzzz-none", backwards: false) && c.root.findBar.status.stringValue == "No matches")
+        c.closeFind()
+        check("關閉尋找列", c.root.findBar.isHidden)
+
+        let host = server.url("/text").host!
+        let other = URL(string: "http://localhost:\(server.port)/text")!
+        check("預設縮放 1.0", t.webView.pageZoom == 1.0)
+        check("⌘+ 放大", press("+", .command, in: c.window) && t.webView.pageZoom == 1.1)
+        check("⌘- 縮小", press("-", .command, in: c.window) && t.webView.pageZoom == 1.0)
+        c.zoomIn(); c.zoomIn()
+        check("連按兩次放大到 1.25", t.webView.pageZoom == 1.25)
+        let t2 = c.tabs.newTab(url: server.url("/b"))
+        check("同網站新 Tab 套用記憶的縮放", await wait { t2.pageTitle == "Page B" } && t2.webView.pageZoom == 1.25)
+        let t3 = c.tabs.newTab(url: other)
+        check("不同網站不受影響", await wait { t3.pageTitle == "Text Page" } && t3.webView.pageZoom == 1.0, "\(host)")
+        c.tabs.select(t)
+        check("⌘0 還原", press("0", .command, in: c.window) && t.webView.pageZoom == 1.0 && c.tabs.zoom.zoom(for: host) == 1)
+        c.tabs.close(t2); c.tabs.close(t3); c.tabs.close(t)
     }
 }

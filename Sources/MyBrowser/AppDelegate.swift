@@ -14,7 +14,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let store: WKWebsiteDataStore = smoke ? .nonPersistent() : .default()
         let storage = smoke ? Storage(directory: FileManager.default.temporaryDirectory.appendingPathComponent("mybrowser-smoke-\(getpid())"))
                             : .standard
-        controller = BrowserWindowController(dataStore: store, storage: storage, downloads: DownloadManager(directory: smoke ? storage.directory.appendingPathComponent("Downloads") : FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask)[0]), autosave: !smoke)
+        controller = BrowserWindowController(dataStore: store, storage: storage, downloads: DownloadManager(directory: smoke ? storage.directory.appendingPathComponent("Downloads") : FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask)[0]), zoom: ZoomStore(defaults: smoke ? (UserDefaults(suiteName: "mybrowser-smoke-\(getpid())") ?? .standard) : .standard), autosave: !smoke)
         NSApp.activate(ignoringOtherApps: true)
         // 命令列給的網址在新分頁開啟（open -a ... --args URL）。
         for arg in CommandLine.arguments.dropFirst() {
@@ -64,6 +64,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc func goBack() { controller.goBack() }
     @objc func goForward() { controller.goForward() }
     @objc func toggleSidebar() { controller.toggleSidebar() }
+    @objc func showFind() { controller.showFind() }
+    @objc func findNext() { controller.findMenuNext() }
+    @objc func findPrevious() { controller.findMenuPrevious() }
+    @objc func zoomIn() { controller.zoomIn() }
+    @objc func zoomOut() { controller.zoomOut() }
+    @objc func zoomReset() { controller.zoomReset() }
     @objc func copyURL() { controller.copyURL() }
 
     func buildMenu() -> NSMenu {
@@ -105,10 +111,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             item("Paste", #selector(NSText.paste(_:)), "v"),
             item("Select All", #selector(NSText.selectAll(_:)), "a"),
             .separator(),
+            .separator(),
+            item("Find…", #selector(showFind), "f", target: me),
+            item("Find Next", #selector(findNext), "g", target: me),
+            item("Find Previous", #selector(findPrevious), "G", [.command, .shift], target: me),
+            .separator(),
             item("Copy URL", #selector(copyURL), "C", [.command, .shift], target: me),
         ])
         add("View", [
             item("Toggle Sidebar", #selector(toggleSidebar), "s", target: me),
+            item("Zoom In", #selector(zoomIn), "+", target: me),
+            item("Zoom In (⌘=)", #selector(zoomIn), "=", target: me),
+            item("Zoom Out", #selector(zoomOut), "-", target: me),
+            item("Actual Size", #selector(zoomReset), "0", target: me),
+            .separator(),
             item("Reload", #selector(reload), "r", target: me),
             item("Back", #selector(goBack), "[", target: me),
             item("Forward", #selector(goForward), "]", target: me),
