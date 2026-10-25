@@ -301,6 +301,7 @@ enum Smoke {
         try await findZoomChecks(server, app)
         try await authChecks(server, app)
         try await historyChecks(server, app)
+        try await closeKeyChecks(server, app)
     }
 }
 
@@ -485,5 +486,44 @@ extension Smoke {
         try FileManager.default.createDirectory(at: bad.directory, withIntermediateDirectories: true)
         try Data("garbage".utf8).write(to: bad.directory.appendingPathComponent(HistoryStore.fileName))
         check("壞檔回到空歷史", HistoryStore(storage: bad).entries.isEmpty)
+    }
+}
+
+extension Smoke {
+    /// 以 NSApp.sendEvent 送進真實按鍵路徑（含 first responder 與選單比對）。
+    static func send(_ chars: String, _ mods: NSEvent.ModifierFlags, in window: NSWindow) {
+        NSApp.sendEvent(keyEvent(chars, mods, in: window))
+    }
+
+    static func closeKeyChecks(_ server: FixtureServer, _ app: AppDelegate) async throws {
+        print("關閉 Tab 快捷鍵（⌘W / Ctrl+W）")
+        let c = app.controller!
+        let tm = c.tabs
+        let w = c.window
+        let focuses: [(String, () -> Void)] = [
+            ("網頁內容", { w.makeFirstResponder(tm.activeTab?.webView) }),
+            ("側邊欄網址列", { c.focusAddress() }),
+            ("Tab 列", { w.makeFirstResponder(c.sidebar.rowViews.first) }),
+        ]
+        for (mods, label) in [(NSEvent.ModifierFlags.command, "⌘W"), (.control, "Ctrl+W")] {
+            for (where_, focus) in focuses {
+                let t = tm.newTab(url: server.url("/b"))
+                _ = await wait { t.pageTitle == "Page B" }
+                focus()
+                let n = tm.tabs.count
+                send("w", mods, in: w)
+                check("\(label) 焦點在\(where_)：關閉目前 Tab", tm.tabs.count == n - 1 && !tm.tabs.contains { $0 === t })
+            }
+        }
+        c.focusAddress()
+        c.addressField.stringValue = "hello"
+        c.addressField.currentEditor()?.selectedRange = NSRange(location: 5, length: 0)
+        let n = tm.tabs.count
+        let handled = press("a", .control, in: w) // 非 Ctrl+W 的 emacs 組合不被選單吃掉
+        check("Ctrl+W 之外的 Ctrl 組合鍵不關 Tab、網址列文字不變", !handled && tm.tabs.count == n && c.addressField.stringValue == "hello")
+        // 最後一個 Tab：維持現有行為，補一個空白 Tab。
+        while tm.tabs.count > 1 { tm.close(tm.tabs.last!) }
+        send("w", .control, in: w)
+        check("Ctrl+W 關掉最後一個 Tab 會補空白 Tab", tm.tabs.count == 1 && tm.activeTab?.url == nil)
     }
 }

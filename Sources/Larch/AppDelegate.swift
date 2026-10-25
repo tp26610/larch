@@ -100,6 +100,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             item("New Tab", #selector(newTab), "t", target: me),
             item("Open Location", #selector(focusAddress), "l", target: me),
             item("Close Tab", #selector(closeTab), "w", target: me),
+            item("Close Tab (Ctrl+W)", #selector(closeTab), "w", .control, target: me),
             item("Restore Closed Tab", #selector(restoreTab), "T", [.command, .shift], target: me),
         ])
         add("Edit", [

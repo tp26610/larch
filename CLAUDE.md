@@ -15,7 +15,7 @@ Brian（Senior Engineering Manager，台灣，用繁體中文溝通）因 Arc �
 ```bash
 swift build
 swift run Larch                 # 執行
-scripts/smoke.sh                    # 105 項煙霧測試，驅動真實視窗與 WKWebView（會開視窗）
+scripts/smoke.sh                    # 113 項煙霧測試，驅動真實視窗與 WKWebView（會開視窗）
 scripts/bundle.sh                   # build/Larch.app（Info.plist 含 http/https、html 宣告）
 scripts/install.sh                  # 安裝到 /Applications（見 README）
 .build/debug/Larch --live-check https://accounts.google.com /tmp/out
@@ -40,6 +40,7 @@ DownloadManager.swift            WKDownload → 下載資料夾，重名加序�
 ErrorPage.swift                  載入失敗說明頁（全部跳脫、CSP 禁腳本）
 FindBar.swift                    頁內尋找列 + ZoomStore（以 host 記縮放，存 UserDefaults）
 Theme.swift                      顏色與尺寸
+LarchWindow.swift                主視窗子類別（按鍵路徑）
 Smoke.swift                      FixtureServer（本機假網站）+ smoke 檢查 + liveCheck
 ```
 - 新增快捷鍵：在 `AppDelegate.buildMenu` 加選單項。Shift 組合要用大寫 keyEquivalent（如 "T"）並加 `.shift`，否則與 ⌘T 衝突。
@@ -62,9 +63,10 @@ Smoke.swift                      FixtureServer（本機假網站）+ smoke 檢�
 13. 外部連結入口是 `application(_:open:)`；冷啟動時 controller 可能還沒建好，先放進 `pendingURLs`。本機 .html 只放行該檔案的導覽（`allowedFileURL`）；網址列與其他來源的 file: 一律拒絕。
 14. 下載、歷史、session 路徑在 smoke 模式都導到暫存資料夾，不碰真實資料。
 15. 說明頁（loadHTMLString）在上一頁/下一頁的歷史行為未驗證；重新整理在說明頁上會重試原網址（`reloadOrRetry`）。
+16. **⌘W / Ctrl+W 由 `LarchWindow.performKeyEquivalent` 先交給選單**：焦點在 WKWebView 時，按鍵會先送進網頁、沒被 preventDefault 才非同步回頭比對選單，網頁可擋掉、smoke 也會變成非同步。Ctrl+W 是 File 選單裡獨立的「Close Tab (Ctrl+W)」項目。關閉最後一個 Tab 會補一個空白 Tab（視窗不關）。
 
 ## 驗證狀況
-- smoke 105/105 通過（macOS 26 / Swift 6.2.4）；accounts.google.com 登入頁載入成功（含 favicon）。
+- smoke 113/113 通過（macOS 26 / Swift 6.2.4）；accounts.google.com 登入頁載入成功（含 favicon）。
 - 冷啟動與已執行時 `open -a` 開外部連結已用打包的 .app 實測（session.json 有新 Tab）。
 - 尚未在真實視窗手動驗證：實際把它設為預設瀏覽器、真實鍵盤的 ⌘= 放大、拖曳視窗手感、紅綠燈位置、側邊欄隱藏後紅綠燈浮在網頁上、捲動手感、Google 實際帳密登入與重開後保持登入（只驗證登入頁載入；持久性依據實驗專案的結果）、下載、HTTP 驗證對話框、全螢幕影片。
 
