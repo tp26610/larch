@@ -4,12 +4,13 @@
 1. Little Arc：Alt+點連結（及外部連結）先在獨立小視窗開啟，可關閉或加進 Tabs
 2. Ctrl+Tab MRU：最近使用 Tab 切換（Electron 版踩過的坑：不要攔截 keyUp，見 ../my-browser/CLAUDE.md）
 3. Command Palette：⌘T 搜尋 + 開新 Tab 已完成，動作（例如 Restore Last）與 Tab 切換器待做（元件見 CommandPaletteView / PaletteModel，擴充方式見 CLAUDE.md）
-4. 書籤
+4. Pinned tabs + 巢狀資料夾（仿 Arc；Brian 常用，優先於書籤）
 
 ## 已知缺口（未排序）
 - 邊用邊記的問題放這裡
 - 歷史 UI、清除歷史/瀏覽資料
-- Tab 拖曳排序
+- 書籤（Brian 不太用，優先度低）
+- Tab 拖曳排序（pin / 資料夾會需要）
 - 下載：可取消、下載清單；目前只顯示最新一筆
 - 說明頁上的上一頁/下一頁行為未驗證
 - 正式簽章與公證（Developer ID）；目前 ad-hoc
