@@ -6,6 +6,7 @@ macOS 專用瀏覽器：Swift + AppKit + 系統 WebKit（WKWebView）。Arc 式�
 swift run Larch          # 開發執行
 scripts/bundle.sh            # 打包成 build/Larch.app（ad-hoc 簽章）
 scripts/smoke.sh             # 煙霧測試（會開視窗）
+swift scripts/make-icon.swift  # 重新產生 App 圖示 assets/AppIcon.icns
 ```
 
 需求：macOS 14+、Xcode 26 / Swift 6.2。

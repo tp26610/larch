@@ -5,7 +5,8 @@ cd "$(dirname "$0")/.."
 swift build -c release
 APP="build/Larch.app"
 rm -rf "$APP"
-mkdir -p "$APP/Contents/MacOS"
+mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
+cp assets/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
 cp "$(swift build -c release --show-bin-path)/Larch" "$APP/Contents/MacOS/Larch"
 cat > "$APP/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
@@ -15,6 +16,7 @@ cat > "$APP/Contents/Info.plist" <<PLIST
   <key>CFBundleDisplayName</key><string>Larch</string>
   <key>CFBundleIdentifier</key><string>com.brianyeh.larch</string>
   <key>CFBundleExecutable</key><string>Larch</string>
+  <key>CFBundleIconFile</key><string>AppIcon</string>
   <key>CFBundlePackageType</key><string>APPL</string>
   <key>CFBundleShortVersionString</key><string>0.1.0</string>
   <key>CFBundleVersion</key><string>1</string>
