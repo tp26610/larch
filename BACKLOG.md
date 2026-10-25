@@ -1,9 +1,8 @@
 # Backlog
 
 ## 接下來（依序）
-1. Little Arc：Alt+點連結（及外部連結）先在獨立小視窗開啟，可關閉或加進 Tabs
-2. Ctrl+Tab MRU：最近使用 Tab 切換（Electron 版踩過的坑：不要攔截 keyUp，見 ../my-browser/CLAUDE.md）
-3. Spaces（仿 Arc；尚未開工，以下是預訂的設計起點）
+1. Ctrl+Tab MRU：最近使用 Tab 切換（Electron 版踩過的坑：不要攔截 keyUp，見 ../my-browser/CLAUDE.md）
+2. Spaces（仿 Arc；尚未開工，以下是預訂的設計起點）
    - 資料模型：Space = 名稱、顏色（取代固定的鼠尾草綠，由該色推導 hover / active / 進度條等配色，確保白字對比）、可選 emoji、自己的釘選區（含巢狀資料夾）與自己的一般 Tab。
    - 登入：所有 Space 先共用同一個 `WKWebsiteDataStore`；資料結構預留「Space 指定獨立 data store 識別碼」的欄位（只留欄位與註解，不實作）。
    - 切換：側邊欄底部一列 Space 切換列（圓點或 emoji，目前高亮，右側「+」）；Ctrl+1…9 切換（不佔用 ⌘1…⌘9）；側邊欄兩指橫滑（若穩定再做）；切換不重新載入頁面（各 Space 的 WKWebView 保留，只顯示/隱藏），過場動畫 ≤ 200ms。
@@ -11,7 +10,7 @@
    - Command Palette：新增 New / Rename / Switch to / Move Tab to Space 動作；一般模式的 Tab 與釘選搜尋跨所有 Space（結果標示所屬 Space），選到其他 Space 的項目先切過去。
    - 還原：關閉 Tab 堆疊（⌘⇧T）維持全域，還原回原本的 Space；session restore 記住最後所在的 Space 與各 Space 的 Tab / 選中項；外部連結開在目前的 Space。
    - 遷移：既有 `pins.json` / `session.json` 無損遷移到預設 Space「Personal」（色 #699987），需壞檔容錯與 smoke 檢查。
-4. 從 Arc 匯入：把 Arc 的 Spaces、置頂 Tab 與資料夾（含巢狀）、名稱匯入 Larch；不匯入登入狀態（Brian 確認不需要）。待調查：Arc 本機資料位置與格式（推測在 `~/Library/Application Support/Arc/` 底下的 sidebar JSON，需實際確認）；先做唯讀解析並預覽再匯入，不修改 Arc 的資料；依賴 Spaces 的資料結構，在 Spaces 之後做。
+3. 從 Arc 匯入：把 Arc 的 Spaces、置頂 Tab 與資料夾（含巢狀）、名稱匯入 Larch；不匯入登入狀態（Brian 確認不需要）。待調查：Arc 本機資料位置與格式（推測在 `~/Library/Application Support/Arc/` 底下的 sidebar JSON，需實際確認）；先做唯讀解析並預覽再匯入，不修改 Arc 的資料；依賴 Spaces 的資料結構，在 Spaces 之後做。
 
 ## 想法（低優先，沒有必做理由）
 - 書籤：Arc 本身也沒有傳統書籤，釘選 Tab 與巢狀資料夾已取代；之後有具體需求再提升。
@@ -23,7 +22,6 @@
 - 下載：可取消、下載清單；目前只顯示最新一筆
 - 說明頁上的上一頁/下一頁行為未驗證
 - 正式簽章與公證（Developer ID）；目前 ad-hoc
-- 冷啟動開外部連結時會多一個空白 Tab（有還原的 Tab 時不明顯）
 
 ## 已完成
 - 單一視窗、側邊欄（⌘S）、圓角卡片與邊框拖曳
@@ -38,3 +36,5 @@
 - 載入狀態：卡片頂端進度條、Tab 列 spinner、重新整理變停止
 - Pinned tabs 與巢狀資料夾（⌘D、⌘⇧N、右鍵選單、拖曳、灰色已關閉釘選、重開後還原）；一般 Tab 拖曳排序
 - Command Palette 完成：⌘T / ⌘L、動作模式（Tab 鍵進入）與 17 個動作、類型標籤與快捷鍵、近用排序（Ctrl+Tab 切換器仍在待辦）
+
+- Little Arc：Option+點連結、外部連結（預設瀏覽器）預設走 Little（File 選單可關）、加到 Tabs 搬移同一個 WKWebView、多視窗、Esc/⌘W/⌘O/⌘Return、命令列動作 Open in Little Window；順手修掉冷啟動多一個空白 Tab

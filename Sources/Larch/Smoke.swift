@@ -65,6 +65,7 @@ final class FixtureServer: @unchecked Sendable {
     private static func route(_ path: String) -> (String, Data, Double) {
         switch path.split(separator: "?").first.map(String.init) ?? "/" {
         case "/a": return ("text/html; charset=utf-8", html("Page A", "<h1>A</h1>", head: "<link rel=\"icon\" href=\"/icon.png\">"), 0)
+        case "/doc": return ("text/html; charset=utf-8", html("Design Notes — Little Window", "<style>body{font:16px -apple-system,sans-serif;max-width:640px;margin:40px auto;color:#222}h1{font-size:28px}p{line-height:1.6;color:#444}</style><h1>Design notes</h1><p>Peek at a link in a small window, then close it or add it to your tabs. The page keeps its scroll position and login when it moves.</p><p>Press Esc or ⌘W to close. Press ⌘O or ⌘Return to add it to Tabs.</p>"), 0)
         case "/b": return ("text/html; charset=utf-8", html("Page B", "<h1>B</h1>"), 0)
         case "/c": return ("text/html; charset=utf-8", html("頁面 C"), 0)
         case "/slow": return ("text/html; charset=utf-8", html("Slow Page"), 1.5)
@@ -1173,6 +1174,10 @@ extension Smoke {
         check("沒有其他一般 Tab 時 Close Other Tabs 隱藏", !actionIDs().contains("closeOthers"))
         p.dismiss()
 
+        run("little", query: "little")
+        check("動作 Open in Little Window：以目前網址開 Little", c.littles.count == 1 && c.littles[0].tab.requestedURL == tm.activeTab?.displayURL)
+        c.closeAllLittles()
+
         // New Blank Tab → 空白 Tab 並叫出覆蓋層（在該 Tab 導航）
         let n = tm.tabs.count
         run("new", query: "blank")
@@ -1207,6 +1212,7 @@ extension Smoke {
         check("動作模式捲到下面再改輸入：第一列（Restore 等）回到可見", p.visibleListRect.minY <= 0.5 && selectedVisible())
         p.dismiss()
         if let dir = ProcessInfo.processInfo.environment["LARCH_SHOT_DIR"] { await paletteShots(c, server, dir) }
+        if ProcessInfo.processInfo.environment["LARCH_SHOT_LITTLE"] != nil { await littleHold(server) }
         c.window.close()
     }
 
@@ -1426,5 +1432,23 @@ extension Smoke {
         ext.window.close()
         for l in c.littles { l.close() }
         c.window.close()
+    }
+}
+
+extension Smoke {
+    /// 截圖用：在螢幕上留住「主視窗 + Little」幾秒，外部用 screencapture 擷取。
+    static func littleHold(_ server: FixtureServer) async {
+        let c = BrowserWindowController(dataStore: .nonPersistent(), storage: tempStorage("hold"), autosave: false)
+        let a = c.tabs.newTab(url: server.url("/doc"))
+        _ = await wait { a.pageTitle.hasPrefix("Design") }
+        c.tabs.pins.addTab(url: server.url("/a"), title: "Docs", parent: nil)
+        c.window.setFrame(NSRect(x: 120, y: 140, width: 1100, height: 700), display: true)
+        if let l = c.openLittle(server.url("/doc?peek")) {
+            _ = await wait { l.tab.pageTitle.hasPrefix("Design") }
+            l.window.setContentSize(NSSize(width: 760, height: 520))
+            l.window.setFrameOrigin(NSPoint(x: c.window.frame.midX - l.window.frame.width / 2 + 60, y: c.window.frame.midY - l.window.frame.height / 2 - 20))
+        }
+        print("HOLD main=\(c.window.windowNumber) little=\(c.littles.first?.window.windowNumber ?? 0)")
+        try? await Task.sleep(nanoseconds: 9_000_000_000)
     }
 }

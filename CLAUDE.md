@@ -15,7 +15,7 @@ Brian（Senior Engineering Manager，台灣，用繁體中文溝通）因 Arc �
 ```bash
 swift build
 swift run Larch                 # 執行
-scripts/smoke.sh                    # 263 項煙霧測試，驅動真實視窗與 WKWebView（會開視窗）
+scripts/smoke.sh                    # 305 項煙霧測試，驅動真實視窗與 WKWebView（會開視窗）
 scripts/bundle.sh                   # build/Larch.app（Info.plist 含 http/https、html 宣告）
 scripts/install.sh                  # 安裝到 /Applications（見 README）
 .build/debug/Larch --live-check https://accounts.google.com /tmp/out
@@ -42,6 +42,8 @@ FindBar.swift                    頁內尋找列 + ZoomStore（以 host 記縮�
 Theme.swift                      顏色與尺寸
 PinStore.swift                   釘選與資料夾的樹（PinNode）、pins.json、移動/刪除/防循環
 SidebarRows.swift                SidebarItem（拖曳字串）、資料夾列、分隔線、落點提示、拖曳來源
+LittleWindow.swift               Little 視窗（LittleWindow 按鍵攔截、LittleRootView 工具列、LittleWindowController）
+Preferences.swift                偏好（外部連結走 Little、Little 大小）
 LoadingBarView.swift             卡片頂端載入進度條（estimatedProgress）
 LarchWindow.swift                主視窗子類別（⌘W/Ctrl+W 按鍵路徑、雙擊 bar）
 CommandPaletteView.swift         ⌘T 命令列覆蓋層（輸入框 + 候選列；provider / onPick 由 controller 注入，可重用）
@@ -83,10 +85,12 @@ Smoke.swift                      FixtureServer（本機假網站）+ smoke 檢�
 21. **釘選與資料夾**：`PinStore` 是樹（`PinNode`：folder / tab，最上層可混放），存 `pins.json`，節點只在載入時過濾 http(s)。`Tab.pinID` 綁定節點；`TabManager.liveTab(forPin:)` / `activatePin` / `pin` / `unpin` / `moveTab`。關掉釘選 Tab 時節點保留（灰色列，`TabRowView.tab == nil`），點擊用節點網址重開並綁定；`closedStack` 與 session 都帶 `pinID`，還原時節點不存在或已被綁定就當一般 Tab。側邊欄順序：釘選樹（`PinStore.visible()`）→ `DividerRowView` → 一般 Tab（`pinID == nil`）。節點的標題與 favicon（PNG）在 `tabChanged` 時用 `PinStore.remember` 同步（不觸發重建，讓灰色列外觀正確）。
 22. **拖曳**：`SidebarView` 是整個清單的拖曳目的地（剪貼簿型別 `app.larch.sidebar-item`，字串 `tab:<uuid>` / `pin:<uuid>`）；它只做幾何（找到游標下的列與列內位置 0~1）與畫提示，語意交給 `BrowserWindowController.resolveDrop`（回傳 `DropPlan`：提示樣式 + commit）。規則：資料夾列上 25% 之前、下 25% 之後（收合或空資料夾才算「之後」）、中間放進去；釘選 Tab 列上/下半；分隔線 = 釘到最上層末尾 / 取消釘選；一般列重排；資料夾不能放進自己的子孫或一般區；灰色釘選拖到一般區會以該網址開成一般 Tab。smoke 以假的 `NSDraggingInfo` 走 `draggingUpdated` / `performDragOperation`，真實滑鼠拖曳（拖曳影像、自動捲動手感）沒有實測。截圖/排版參考 `docs/pins.png`（smoke 在 `LARCH_SHOT_DIR=<資料夾>` 時於暫存資料產生，不碰真實資料）。
 
+23. **Little Arc**：`Tab.decidePolicyFor` 在 `navigationType == .linkActivated` 且含 Option、不含 ⌘、http(s) 時 `.cancel` 並呼叫 `onOptionClick`（TabManager 接到 controller 的 `openLittle`）。Little 視窗的 Tab 由 `TabManager.makeTab()` 建立（共用 data store/下載/縮放，瀏覽寫歷史），**不在 `tabs` 清單裡**，所以關閉不進 closedStack、也不會被 session 存。`TabManager.adopt(tab)` 把它「搬進」主視窗：同一個 WKWebView、重接回呼、插在目前 Tab 之後並選中，頁面狀態不重載；`LittleWindowController.transferred` 為真時關視窗不 `teardown`。Little 內 `popupInPlace`（window.open / target=_blank 就地載入）。`LittleWindow` 是 `LarchWindow` 子類，Esc / ⌘W / Ctrl+W / ⌘O / ⌘Return / ⌘R / ⌘[ ⌘] 在視窗層級攔截（網頁焦點下也有效），並吞掉 ⌘T/⌘L/⌘S/⌘D/Ctrl+S 避免誤動主視窗（選單的 target 是主 controller，Little 為 key window 時其他選單快捷鍵仍會作用在主視窗）。外部連結（`openExternal`）依 `Preferences.externalLinksInLittle`（預設 true）走 Little 或新 Tab；新 Tab 時若只有一個全新空白 Tab 就重用它（修掉冷啟動多一個空白 Tab）。同網址 300ms 內重複開 Little 會被忽略。退出前 `flushPersistence` 關閉所有 Little。截圖 `docs/little.png`（smoke 以 `LARCH_SHOT_LITTLE=1` 留住視窗，用 `screencapture -l` 分別擷取後合成；視窗擷取不含 WKWebView 內容，所以頁面區是空白）。
+
 ## 驗證狀況
-- smoke 263/263 通過（macOS 26 / Swift 6.2.4）；accounts.google.com 登入頁載入成功（含 favicon）。
+- smoke 305/305 通過（macOS 26 / Swift 6.2.4）；accounts.google.com 登入頁載入成功（含 favicon）。
 - 冷啟動與已執行時 `open -a` 開外部連結已用打包的 .app 實測（session.json 有新 Tab）。
-- 尚未在真實視窗手動驗證：實際把它設為預設瀏覽器、真實鍵盤的 ⌘= 放大、拖曳視窗手感、紅綠燈位置、側邊欄隱藏時滑鼠實際移到左上角的紅綠燈淡入淡出、全螢幕進出、捲動手感、Google 實際帳密登入與重開後保持登入（只驗證登入頁載入；持久性依據實驗專案的結果）、下載、HTTP 驗證對話框、全螢幕影片。
+- 尚未在真實視窗手動驗證：真實 Option+點連結的手感（smoke 已送合成的 Option 滑鼠事件進 WKWebView）、外部連結走 Little 的實際流程（需設為預設瀏覽器）、Little 視窗拖曳/雙擊/縮放手感、實際把它設為預設瀏覽器、真實鍵盤的 ⌘= 放大、拖曳視窗手感、紅綠燈位置、側邊欄隱藏時滑鼠實際移到左上角的紅綠燈淡入淡出、全螢幕進出、捲動手感、Google 實際帳密登入與重開後保持登入（只驗證登入頁載入；持久性依據實驗專案的結果）、下載、HTTP 驗證對話框、全螢幕影片。
 
 ## Backlog
 見 `BACKLOG.md`；開工前先讀，完成後移到「已完成」。

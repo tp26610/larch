@@ -619,6 +619,11 @@ final class BrowserWindowController: NSObject, NSTextFieldDelegate, NSWindowDele
         return little
     }
 
+    /// 動作「Open in Little Window」：以目前 Tab 的網址開一個 Little 視窗。
+    func openActiveTabInLittle() {
+        if let url = tabs.activeTab?.displayURL { openLittle(url) }
+    }
+
     func closeAllLittles() {
         for l in littles { l.close() }
     }

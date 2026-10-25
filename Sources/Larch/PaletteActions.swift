@@ -54,6 +54,8 @@ enum PaletteActions {
                       isAvailable: hasPage, run: { $0.zoomReset() }),
         PaletteAction(id: "find", title: fixed("Find in Page"), keywords: "search text", shortcut: "⌘F",
                       isAvailable: hasPage, run: { $0.showFind() }),
+        PaletteAction(id: "little", title: fixed("Open in Little Window"), keywords: "peek preview little arc", shortcut: nil,
+                      isAvailable: hasPage, run: { $0.openActiveTabInLittle() }),
         PaletteAction(id: "inspector", title: fixed("Open Web Inspector"), keywords: "devtools developer console inspect", shortcut: nil,
                       isAvailable: { $0.canOpenInspector }, run: { $0.openInspector() }),
     ]

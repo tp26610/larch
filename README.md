@@ -30,6 +30,7 @@ xattr -dr com.apple.quarantine "/Applications/Larch.app"
 
 ## 目前功能
 - 單一視窗；側邊欄（⌘S / Ctrl+S 隱藏，紅綠燈一起收合；隱藏時滑鼠移到左上角會暫時顯示）+ 8px 邊框的圓角網頁卡片；雙擊外框或側邊欄空白處放大/還原視窗（依系統「按兩下視窗標題列」設定）
+- Little Arc：按住 Option 點連結，在獨立的小視窗先看一眼（Esc / ⌘W 關閉；⌘O、⌘Return 或「Add to Tabs」把同一個頁面搬進主視窗成為新 Tab，不重新載入）。其他 App 傳來的外部連結（Larch 設為預設瀏覽器時）預設也在 Little 開，File 選單「Open External Links in Little Window」可關掉改成新 Tab。可同時開多個，共用登入；命令列動作 Open in Little Window 可把目前頁面丟進 Little
 - ⌘T 命令列：視窗中央彈出搜尋框，輸入網址或關鍵字 Enter 以新 Tab 開啟；即時列出已開啟的 Tab（Enter/點擊直接切換）與歷史紀錄；↑↓ 選取、Esc 或點外面關閉（側邊欄「+ New Tab」同一個）；每列右側顯示類型（Open / Tab / Pinned / History / Action）與快捷鍵，超過 8 列可捲動
 - 動作模式：覆蓋層按 Tab 鍵進入（輸入框左側出現 Actions chip，保留已輸入文字），只列動作；Backspace（輸入框為空）或 Shift+Tab 離開。動作：Restore Last Closed Tab、New Blank Tab、Close Tab、Close Other Tabs、Duplicate Tab（⌃⇧D）、Reload Tab、Copy Tab URL、Copy Tab URL as Markdown（⌘⌥⇧C）、Rename Tab、Pin/Unpin Tab（⌘D）、New Folder（⌘⇧N）、Toggle Sidebar、Zoom In/Out/Reset、Find in Page、Open Web Inspector；不適用目前狀態的動作不列出
 - Tab：關閉 ⌘W / Ctrl+W、切換、還原 ⌘⇧T（最多 25 筆、僅 http/https）、雙擊改名
