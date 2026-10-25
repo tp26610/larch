@@ -8,6 +8,9 @@ Brian（Senior Engineering Manager，台灣，用繁體中文溝通）因 Arc �
 - 只做 Mac：不跨平台、不做 Chrome 擴充功能。重度 Google 網頁應用用其他瀏覽器補位。
 - 已評估放棄：Dia、Ardia（只適合當第二瀏覽器）、fork Chromium。
 
+## 決策紀錄與研究
+**為什麼這樣做**（Electron 放棄的原因、為什麼不 fork Chromium、Google 登入與 passkey 的事實、Ardia 評估、安全狀態、協作與驗證限制）見 `docs/decisions.md`；Ardia 的完整審查與背景報告在 `docs/research/`。開工前先看，避免重複已驗證無效的做法（例如偽裝 Chrome 的 UA / `Sec-CH-UA`）。
+
 ## 溝通偏好
 繁體中文，簡潔，結果先行，不要 emoji。commit 訊息用繁體中文，結尾加 `Co-Authored-By` 行。
 
