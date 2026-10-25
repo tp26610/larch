@@ -26,6 +26,8 @@ final class FixtureServer: @unchecked Sendable {
         }
     }
 
+    func stop() { listener.cancel() }
+
     func url(_ path: String) -> URL { URL(string: "http://127.0.0.1:\(port)\(path)")! }
 
     private final class OnceBox: @unchecked Sendable {
@@ -276,6 +278,7 @@ enum Smoke {
         try await sessionChecks(server, app)
         try await externalChecks(server, app)
         try await downloadChecks(server, app)
+        try await errorPageChecks(server, app)
     }
 }
 
@@ -353,6 +356,37 @@ extension Smoke {
         check("重名加序號", await wait { FileManager.default.fileExists(atPath: dm.directory.appendingPathComponent("report (1).txt").path) })
         check("檔名不可穿越路徑", dm.uniqueDestination(for: "../../evil.txt").deletingLastPathComponent().path == dm.directory.path
               && dm.uniqueDestination(for: ".hidden").lastPathComponent == "hidden")
+        c.tabs.close(t)
+    }
+}
+
+extension Smoke {
+    static func errorPageChecks(_ server: FixtureServer, _ app: AppDelegate) async throws {
+        print("錯誤頁")
+        let c = app.controller!
+        let t = c.tabs.newTab()
+        let tmp = try FixtureServer()
+        await tmp.start()
+        let dead = tmp.url("/x")
+        tmp.stop()
+        try? await Task.sleep(nanoseconds: 200_000_000)
+        c.submitAddress(dead.absoluteString)
+        check("連不上顯示說明頁", await wait { t.errorURL == dead && t.pageTitle == "Can't connect to the server" }, "\(t.pageTitle) \(String(describing: t.errorURL)) \(String(describing: t.url))")
+        check("網址列仍是失敗網址", c.addressField.stringValue == dead.absoluteString)
+        let text = try? await t.webView.evaluateJavaScript("document.body.innerText") as? String
+        check("頁面含失敗網址文字", text?.contains(dead.absoluteString) == true)
+        c.submitAddress("http://nonexistent-host.invalid/")
+        check("DNS 失敗說明", await wait { t.pageTitle == "Can't find the server" })
+        c.submitAddress(server.url("/b").absoluteString)
+        check("之後正常導航並清除錯誤狀態", await wait { t.pageTitle == "Page B" && t.errorURL == nil })
+        let evil = ErrorPage.html(for: NSError(domain: NSURLErrorDomain, code: NSURLErrorCannotConnectToHost,
+                                              userInfo: [NSLocalizedDescriptionKey: "<script>alert(1)</script>"]),
+                                  url: URL(string: "http://x.test/?q=\"><script>alert(2)</script>")!)
+        check("網址與錯誤文字被跳脫", !evil.contains("<script>alert"))
+        let cert = NSError(domain: NSURLErrorDomain, code: NSURLErrorServerCertificateUntrusted)
+        check("憑證錯誤阻擋且無略過選項", ErrorPage.isCertificateError(cert)
+              && ErrorPage.headline(for: cert).title == "Connection is not private"
+              && !ErrorPage.html(for: cert, url: nil).lowercased().contains("proceed"))
         c.tabs.close(t)
     }
 }

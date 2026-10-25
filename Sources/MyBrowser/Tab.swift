@@ -20,7 +20,14 @@ final class Tab: NSObject, WKNavigationDelegate, WKUIDelegate {
     private(set) var requestedURL: URL?
     var url: URL? { webView.url }
     /// UI 與 session 看到的網址。
-    var displayURL: URL? { url ?? requestedURL }
+    var displayURL: URL? { errorURL ?? url ?? requestedURL }
+    /// 載入失敗時顯示說明頁；此時網址列仍顯示失敗的網址。
+    private(set) var errorURL: URL?
+
+    /// 重新整理；說明頁上則重試原網址。
+    func reloadOrRetry() {
+        if let errorURL { load(errorURL) } else { webView.reload() }
+    }
     var isLoading: Bool { webView.isLoading }
 
     var displayTitle: String {
@@ -80,6 +87,9 @@ final class Tab: NSObject, WKNavigationDelegate, WKUIDelegate {
             decisionHandler(.allow)
             return
         }
+        if navigationAction.targetFrame?.isMainFrame ?? true, InputNormalizer.isHTTP(navigationAction.request.url) {
+            errorURL = nil
+        }
         if navigationAction.shouldPerformDownload {
             decisionHandler(.download)
             return
@@ -111,6 +121,24 @@ final class Tab: NSObject, WKNavigationDelegate, WKUIDelegate {
     func webView(_ webView: WKWebView, didCommit navigation: WKNavigation!) {
         requestedURL = nil
         favicon = nil
+        notify()
+    }
+
+    func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
+        showError(error)
+    }
+
+    func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
+        showError(error)
+    }
+
+    private func showError(_ error: Error) {
+        let ns = error as NSError
+        guard ErrorPage.shouldShow(ns) else { return }
+        let failing = (ns.userInfo[NSURLErrorFailingURLErrorKey] as? URL) ?? requestedURL
+        errorURL = failing
+        requestedURL = nil
+        webView.loadHTMLString(ErrorPage.html(for: ns, url: failing), baseURL: nil)
         notify()
     }
 

@@ -177,7 +177,7 @@ final class BrowserWindowController: NSObject, NSTextFieldDelegate, NSWindowDele
 
     @objc func goBack() { tabs.activeTab?.webView.goBack() }
     @objc func goForward() { tabs.activeTab?.webView.goForward() }
-    @objc func reload() { tabs.activeTab?.webView.reload() }
+    @objc func reload() { tabs.activeTab?.reloadOrRetry() }
 
     @objc func toggleSidebar() {
         root.sidebarVisible.toggle()
