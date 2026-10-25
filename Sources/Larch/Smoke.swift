@@ -289,6 +289,13 @@ enum Smoke {
         _ = press("s", .command, in: c.window)
         c.root.layoutSubtreeIfNeeded()
         check("再按一次顯示", !c.root.sidebar.isHidden && card.frame.minX == sw)
+        c.window.makeFirstResponder(tm.activeTab?.webView)
+        send("s", .control, in: c.window)
+        c.root.layoutSubtreeIfNeeded()
+        check("Ctrl+S（焦點在網頁）隱藏側邊欄", c.root.sidebar.isHidden && card.frame.minX == 8)
+        send("s", .control, in: c.window)
+        c.root.layoutSubtreeIfNeeded()
+        check("Ctrl+S 再按一次顯示", !c.root.sidebar.isHidden && card.frame.minX == sw)
         check("⌘L 聚焦網址列", press("l", .command, in: c.window) && c.addressField.currentEditor() != nil)
         let before = tm.tabs.count
         check("⌘T 叫出覆蓋層而非直接新增空白分頁", press("t", .command, in: c.window) && c.root.palette.isOpen && tm.tabs.count == before)

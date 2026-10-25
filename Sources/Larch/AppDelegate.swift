@@ -126,6 +126,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         ])
         add("View", [
             item("Toggle Sidebar", #selector(toggleSidebar), "s", target: me),
+            item("Toggle Sidebar (Ctrl+S)", #selector(toggleSidebar), "s", .control, target: me),
             item("Zoom In", #selector(zoomIn), "+", target: me),
             item("Zoom In (⌘=)", #selector(zoomIn), "=", target: me),
             item("Zoom Out", #selector(zoomOut), "-", target: me),

@@ -28,7 +28,7 @@ xattr -dr com.apple.quarantine "/Applications/Larch.app"
 資料位置：`~/Library/Application Support/Larch/`（session.json、history.json）；下載存到 `~/Downloads`。
 
 ## 目前功能
-- 單一視窗；側邊欄（⌘S 隱藏）+ 8px 邊框的圓角網頁卡片；雙擊外框或側邊欄空白處放大/還原視窗（依系統「按兩下視窗標題列」設定）
+- 單一視窗；側邊欄（⌘S / Ctrl+S 隱藏）+ 8px 邊框的圓角網頁卡片；雙擊外框或側邊欄空白處放大/還原視窗（依系統「按兩下視窗標題列」設定）
 - ⌘T 命令列：視窗中央彈出搜尋框，輸入網址或關鍵字 Enter 以新 Tab 開啟；即時列出已開啟的 Tab（Enter/點擊直接切換）與歷史紀錄；↑↓ 選取、Esc 或點外面關閉（側邊欄「+ New Tab」同一個）
 - Tab：關閉 ⌘W / Ctrl+W、切換、還原 ⌘⇧T（最多 25 筆、僅 http/https）、雙擊改名、載入中掃動光條
 - 重開後還原所有 Tab（順序、自訂名稱、選中項）

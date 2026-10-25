@@ -39,11 +39,12 @@ final class LarchWindow: NSWindow {
     }
 
     /// 焦點在網頁時，WKWebView 會先把按鍵交給網頁、沒被 preventDefault 才非同步回頭送選單，
-    /// 網頁（如線上文件）可以擋掉關閉 Tab。⌘W / Ctrl+W 在這裡直接交給選單，同步且不可被網頁攔截。
+    /// 網頁（如線上文件）可以擋掉關閉 Tab。⌘W / Ctrl+W / Ctrl+S 在這裡直接交給選單，同步且不可被網頁攔截。
     override func performKeyEquivalent(with event: NSEvent) -> Bool {
         let mods = event.modifierFlags.intersection(.deviceIndependentFlagsMask).subtracting([.capsLock])
-        if event.type == .keyDown, mods == .control || mods == .command,
-           event.charactersIgnoringModifiers?.lowercased() == "w", NSApp.mainMenu?.performKeyEquivalent(with: event) == true {
+        let key = event.charactersIgnoringModifiers?.lowercased()
+        if event.type == .keyDown, (key == "w" && (mods == .control || mods == .command)) || (key == "s" && mods == .control),
+           NSApp.mainMenu?.performKeyEquivalent(with: event) == true {
             return true
         }
         return super.performKeyEquivalent(with: event)
