@@ -312,6 +312,7 @@ enum Smoke {
         try await historyChecks(server, app)
         try await closeKeyChecks(server, app)
         try await littleChecks(server, app)
+        try await littleRoutingChecks(server, app)
         try await paletteChecks(server, app)
         try await doubleClickChecks(server, app)
         try await trafficLightChecks(server, app)
@@ -1450,5 +1451,125 @@ extension Smoke {
         }
         print("HOLD main=\(c.window.windowNumber) little=\(c.littles.first?.window.windowNumber ?? 0)")
         try? await Task.sleep(nanoseconds: 9_000_000_000)
+    }
+}
+
+extension Smoke {
+    private static func menuItem(_ title: String) -> NSMenuItem? {
+        NSApp.mainMenu?.items.compactMap { $0.submenu?.items.first { $0.title == title } }.first
+    }
+
+    /// Little 為 key window 時，選單動作要依 key window 分派（回報的 bug：⌘W 關到主視窗的 Tab）。
+    static func littleRoutingChecks(_ server: FixtureServer, _ app: AppDelegate) async throws {
+        print("Little：選單動作依 key window 分派")
+        let m = app.controller!
+        let tm = m.tabs
+        let base = tm.newTab(url: server.url("/a?route"))
+        let other = tm.newTab(url: server.url("/b?route"))
+        _ = await wait { base.pageTitle == "Page A" && other.pageTitle == "Page B" }
+        tm.select(other)
+        m.window.makeKeyAndOrderFront(nil)
+        func newLittle(_ q: String) async -> LittleWindowController {
+            let l = m.openLittle(server.url("/a?\(q)"))!
+            _ = await wait { l.tab.pageTitle == "Page A" }
+            return l
+        }
+
+        // ⌘W / Ctrl+W × 三種焦點，一律走 NSApp.sendEvent（真實按鍵路徑）
+        for (mods, label) in [(NSEvent.ModifierFlags.command, "⌘W"), (.control, "Ctrl+W")] {
+            for focus in ["網頁", "工具列", "剛開啟"] {
+                let n = tm.tabs.count, active = tm.activeTab
+                let l = focus == "剛開啟" ? m.openLittle(server.url("/a?fresh\(label)"))! : await newLittle("f\(focus)\(label)")
+                if focus == "工具列" { l.window.makeFirstResponder(l.root.reloadButton) }
+                if focus == "網頁" { l.window.makeFirstResponder(l.tab.webView) }
+                let wasKey = l.window.isKeyWindow
+                NSApp.sendEvent(keyEvent("w", mods, in: l.window))
+                check("\(label) 焦點在 Little \(focus)：Little 關閉、主視窗 Tab 不變", wasKey && l.isClosed && tm.tabs.count == n && tm.activeTab === active && m.littles.isEmpty)
+            }
+        }
+        // 只走選單（繞過視窗層級攔截）：根因的路徑
+        do {
+            let n = tm.tabs.count, active = tm.activeTab
+            let l = await newLittle("menuonly")
+            _ = NSApp.mainMenu?.performKeyEquivalent(with: keyEvent("w", .command, in: l.window))
+            check("只走選單的 ⌘W（Little 為 key）：關 Little、不動主視窗 Tab", l.isClosed && tm.tabs.count == n && tm.activeTab === active)
+        }
+        do {
+            let n = tm.tabs.count
+            let l = await newLittle("menuonly2")
+            _ = NSApp.mainMenu?.performKeyEquivalent(with: keyEvent("w", .control, in: l.window))
+            check("只走選單的 Ctrl+W（Little 為 key）：關 Little、不動主視窗 Tab", l.isClosed && tm.tabs.count == n)
+        }
+        // 主視窗為 key window 時 ⌘W 仍關主視窗的 Tab（Little 在後面不受影響）
+        do {
+            let l = await newLittle("behind")
+            m.window.makeKeyAndOrderFront(nil)
+            let n = tm.tabs.count
+            let victim = tm.activeTab
+            NSApp.sendEvent(keyEvent("w", .command, in: m.window))
+            check("主視窗為 key：⌘W 關主視窗目前的 Tab，Little 不受影響", tm.tabs.count == n - 1 && !tm.tabs.contains { $0 === victim } && !l.isClosed)
+            l.close()
+            tm.restoreLast()
+        }
+        // 多個 Little 各自獨立關閉；關閉後焦點回到主視窗
+        do {
+            let l1 = await newLittle("multi1"), l2 = await newLittle("multi2")
+            l2.window.makeKeyAndOrderFront(nil)
+            NSApp.sendEvent(keyEvent("w", .command, in: l2.window))
+            check("兩個 Little：只關 key 的那個", l2.isClosed && !l1.isClosed && m.littles.count == 1)
+            check("關閉 Little 後焦點回到主視窗", m.window.isKeyWindow)
+            l1.window.makeKeyAndOrderFront(nil)
+            NSApp.sendEvent(keyEvent("w", .command, in: l1.window))
+            check("第二個也可獨立關閉", l1.isClosed && m.littles.isEmpty && m.window.isKeyWindow)
+        }
+        // Little 為 key 時：不適用的選單項目停用，且按鍵不會動到主視窗
+        do {
+            // 主視窗用 127.0.0.1、Little 用 localhost：縮放是依網站記憶的，不同網站才看得出作用對象。
+            let l = m.openLittle(URL(string: "http://localhost:\(server.port)/a?disabled")!)!
+            _ = await wait { l.tab.pageTitle == "Page A" }
+            let pins = tm.pins.roots.count, tabs = tm.tabs.count, sidebar = m.root.sidebarVisible, closed = tm.closedStack.count
+            let disabled = ["New Tab", "Open Location", "Pin / Unpin Tab", "Toggle Sidebar", "Restore Closed Tab", "New Folder", "Duplicate Tab", "Find…", "Find Next"]
+            check("Little 為 key：不適用的選單項目停用", disabled.allSatisfy { t in menuItem(t).map { !app.validateMenuItem($0) } == true }, "\(disabled.filter { t in menuItem(t).map { app.validateMenuItem($0) } != false })")
+            let allowed = ["Close Tab", "Close Tab (Ctrl+W)", "Reload", "Back", "Forward", "Zoom In", "Zoom Out", "Actual Size", "Copy URL", "Copy URL as Markdown"]
+            check("Little 為 key：可套用的選單項目啟用", allowed.allSatisfy { t in menuItem(t).map { app.validateMenuItem($0) } == true })
+            for (chars, mods) in [("d", NSEvent.ModifierFlags.command), ("s", .command), ("t", .command), ("l", .command), ("n", [.command, .shift]), ("t", [.command, .shift]), ("s", .control)] {
+                NSApp.sendEvent(keyEvent(chars, mods, in: l.window))
+            }
+            check("Little 為 key 時按 ⌘D/⌘S/⌘T/⌘L/⌘⇧N/⌘⇧T/Ctrl+S：主視窗完全不動", tm.pins.roots.count == pins && tm.tabs.count == tabs && m.root.sidebarVisible == sidebar
+                  && tm.closedStack.count == closed && !m.root.palette.isOpen && !l.isClosed)
+            // 縮放 / 複製網址 / 重新整理 / 上一頁作用在 Little 的頁面，不是主視窗
+            let mainZoom = tm.activeTab!.webView.pageZoom
+            NSApp.sendEvent(keyEvent("+", .command, in: l.window))
+            let zoomed = await wait(2) { l.tab.webView.pageZoom > 1 }
+            check("⌘+ 作用在 Little 的頁面，主視窗 Tab 縮放不變", zoomed && tm.activeTab!.webView.pageZoom == mainZoom, "little=\(l.tab.webView.pageZoom) main=\(tm.activeTab!.webView.pageZoom)")
+            NSApp.sendEvent(keyEvent("0", .command, in: l.window))
+            check("⌘0 還原 Little 縮放", await wait(2) { l.tab.webView.pageZoom == 1 })
+            NSApp.sendEvent(keyEvent("c", [.command, .shift], in: l.window))
+            check("⌘⇧C 複製的是 Little 頁面的網址", await wait(2) { NSPasteboard.general.string(forType: .string) == l.tab.url?.absoluteString }, NSPasteboard.general.string(forType: .string) ?? "nil")
+            let mainBefore = tm.activeTab!.isLoading
+            NSApp.sendEvent(keyEvent("r", .command, in: l.window))
+            check("⌘R 重新整理 Little 的頁面（主視窗不受影響）", await wait(3) { l.tab.isLoading } && tm.activeTab!.isLoading == mainBefore)
+            _ = await wait(5) { !l.tab.isLoading }
+            l.tab.load(server.url("/b?back"))
+            _ = await wait { l.tab.pageTitle == "Page B" && l.root.backButton.isEnabled }
+            NSApp.sendEvent(keyEvent("[", .command, in: l.window))
+            check("⌘[ 上一頁作用在 Little", await wait { l.tab.pageTitle == "Page A" })
+            // Esc / ⌘O / ⌘Return 在各種焦點下
+            l.window.makeFirstResponder(l.root.reloadButton)
+            NSApp.sendEvent(escEvent(in: l.window))
+            check("Esc 在工具列焦點也關閉 Little", l.isClosed)
+            let n = tm.tabs.count
+            let l2 = await newLittle("o-key")
+            l2.window.makeFirstResponder(l2.root.backButton)
+            NSApp.sendEvent(keyEvent("o", .command, in: l2.window))
+            check("⌘O 在工具列焦點加到 Tabs", l2.isClosed && tm.tabs.count == n + 1 && tm.activeTab === l2.tab)
+            tm.close(l2.tab)
+            let l3 = await newLittle("ret-key")
+            NSApp.sendEvent(returnEvent(.command, in: l3.window))
+            check("⌘Return 加到 Tabs", l3.isClosed && tm.tabs.count == n + 1)
+            tm.close(l3.tab)
+        }
+        _ = tm.restoreLast
+        m.window.makeKeyAndOrderFront(nil)
     }
 }

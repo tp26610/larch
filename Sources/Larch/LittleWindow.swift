@@ -169,8 +169,16 @@ final class LittleWindowController: NSObject, NSWindowDelegate {
         tab.onRequestClose = { [weak self] _ in self?.close() }
         root.card.show(tab.webView)
         sync()
+        activate()
+        // 外部連結開啟時 app 可能還在啟用中（先前的 key window 會在啟用後被還原）：下一輪再確認一次 Little 才是 key window。
+        DispatchQueue.main.async { [weak self] in self?.activate() }
+    }
+
+    private func activate() {
+        guard !closed else { return }
+        NSApp.activate(ignoringOtherApps: true)
         window.makeKeyAndOrderFront(nil)
-        window.makeFirstResponder(tab.webView)
+        if window.firstResponder === window || window.firstResponder == nil || !(window.firstResponder is NSView) { window.makeFirstResponder(tab.webView) }
     }
 
     var isClosed: Bool { closed }

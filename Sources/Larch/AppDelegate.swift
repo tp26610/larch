@@ -73,7 +73,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc func copyURLAsMarkdown() { controller.copyURLAsMarkdown() }
     @objc func toggleExternalLittle() { controller.prefs.externalLinksInLittle.toggle() }
 
+    /// Little 為 key window 時只允許能套用在 Little 頁面的動作（關閉、重新整理、上一頁/下一頁、縮放、複製網址）；
+    /// 其餘（新 Tab、Pin、側邊欄、還原、尋找、⌘L…）一律停用，不會悄悄動到主視窗。
+    private var littleAllowed: Set<Selector> {
+        [#selector(closeTab), #selector(reload), #selector(goBack), #selector(goForward), #selector(zoomIn), #selector(zoomOut),
+         #selector(zoomReset), #selector(copyURL), #selector(copyURLAsMarkdown), #selector(toggleExternalLittle), #selector(makeDefaultBrowser)]
+    }
+
     func validateMenuItem(_ item: NSMenuItem) -> Bool {
+        if controller?.keyLittle != nil, item.target === self, let action = item.action, !littleAllowed.contains(action) { return false }
         if item.action == #selector(toggleExternalLittle) { item.state = controller?.prefs.externalLinksInLittle == true ? .on : .off }
         return true
     }

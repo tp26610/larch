@@ -444,10 +444,11 @@ final class BrowserWindowController: NSObject, NSTextFieldDelegate, NSWindowDele
     }
 
     func zoom(direction: Int) {
-        guard let tab = tabs.activeTab, let host = tab.url?.host, InputNormalizer.isHTTP(tab.url) else { return }
+        guard let tab = targetTab, let host = tab.url?.host, InputNormalizer.isHTTP(tab.url) else { return }
         let next = direction == 0 ? 1 : tabs.zoom.step(from: tab.webView.pageZoom, direction: direction)
         tabs.zoom.set(next, for: host)
         for other in tabs.tabs where other.url?.host?.lowercased() == host.lowercased() { other.webView.pageZoom = next }
+        tab.webView.pageZoom = next // Little 的 Tab 不在 tabs 清單裡
     }
 
     @objc func zoomIn() { zoom(direction: 1) }
@@ -540,7 +541,7 @@ final class BrowserWindowController: NSObject, NSTextFieldDelegate, NSWindowDele
     }
 
     @objc func copyURLAsMarkdown() {
-        guard let tab = tabs.activeTab, let url = tab.displayURL?.absoluteString else { return }
+        guard let tab = targetTab, let url = tab.displayURL?.absoluteString else { return }
         let title = tab.displayTitle.replacingOccurrences(of: "[", with: "\\[").replacingOccurrences(of: "]", with: "\\]")
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString("[\(title)](\(url))", forType: .string)
@@ -566,6 +567,8 @@ final class BrowserWindowController: NSObject, NSTextFieldDelegate, NSWindowDele
     }
 
     @objc func closeCurrentTab() {
+        // Little 為 key window 時，⌘W 只關 Little，絕不動主視窗的 Tab。
+        if let little = keyLittle { little.close(); return }
         if let tab = tabs.activeTab { tabs.close(tab) }
     }
 
@@ -613,7 +616,12 @@ final class BrowserWindowController: NSObject, NSTextFieldDelegate, NSWindowDele
             self.tabs.adopt(tab)
             self.window.makeKeyAndOrderFront(nil)
         }
-        little.onClosed = { [weak self] l in self?.littles.removeAll { $0 === l } }
+        little.onClosed = { [weak self] l in
+            guard let self else { return }
+            self.littles.removeAll { $0 === l }
+            // 關閉 Little 後焦點回到主視窗（搬進 Tabs 時 adopt 已處理）。
+            if !self.window.isMiniaturized { self.window.makeKeyAndOrderFront(nil) }
+        }
         littles.append(little)
         tab.load(url)
         return little
@@ -624,6 +632,12 @@ final class BrowserWindowController: NSObject, NSTextFieldDelegate, NSWindowDele
         if let url = tabs.activeTab?.displayURL { openLittle(url) }
     }
 
+    /// 目前是 key window 的 Little（選單動作依 key window 決定作用對象）。
+    var keyLittle: LittleWindowController? { littles.first { $0.window.isKeyWindow } }
+
+    /// 選單動作的目標頁面：Little 為 key window 時是它的頁面，否則是主視窗目前的 Tab。
+    var targetTab: Tab? { keyLittle?.tab ?? tabs.activeTab }
+
     func closeAllLittles() {
         for l in littles { l.close() }
     }
@@ -632,10 +646,10 @@ final class BrowserWindowController: NSObject, NSTextFieldDelegate, NSWindowDele
         tabs.restoreLast()
     }
 
-    @objc func goBack() { tabs.activeTab?.webView.goBack() }
-    @objc func goForward() { tabs.activeTab?.webView.goForward() }
+    @objc func goBack() { targetTab?.webView.goBack() }
+    @objc func goForward() { targetTab?.webView.goForward() }
     @objc func reload() {
-        guard let tab = tabs.activeTab else { return }
+        guard let tab = targetTab else { return }
         if tab.isLoading { tab.webView.stopLoading() } else { tab.reloadOrRetry() }
     }
 
@@ -653,7 +667,7 @@ final class BrowserWindowController: NSObject, NSTextFieldDelegate, NSWindowDele
     }
 
     @objc func copyURL() {
-        guard let url = tabs.activeTab?.url?.absoluteString else { return }
+        guard let url = targetTab?.url?.absoluteString else { return }
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(url, forType: .string)
     }
