@@ -1,0 +1,93 @@
+import AppKit
+import WebKit
+
+@MainActor
+final class AppDelegate: NSObject, NSApplicationDelegate {
+    var controller: BrowserWindowController!
+    let smoke: Bool
+
+    init(smoke: Bool) { self.smoke = smoke }
+
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        NSApp.mainMenu = buildMenu()
+        // smoke 用暫存的 data store，不污染真實 cookie。
+        let store: WKWebsiteDataStore = smoke ? .nonPersistent() : .default()
+        controller = BrowserWindowController(dataStore: store, autosave: !smoke)
+        NSApp.activate(ignoringOtherApps: true)
+        if smoke {
+            Task { @MainActor in await Smoke.run(self) }
+        }
+    }
+
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
+
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        if !flag { controller.window.makeKeyAndOrderFront(nil) }
+        return true
+    }
+
+    // MARK: 選單（快捷鍵全部走選單，避免與網頁內容搶按鍵）
+
+    @objc func newTab() { controller.newTab() }
+    @objc func closeTab() { controller.closeCurrentTab() }
+    @objc func restoreTab() { controller.restoreTab() }
+    @objc func focusAddress() { controller.focusAddress() }
+    @objc func reload() { controller.reload() }
+    @objc func goBack() { controller.goBack() }
+    @objc func goForward() { controller.goForward() }
+    @objc func toggleSidebar() { controller.toggleSidebar() }
+    @objc func copyURL() { controller.copyURL() }
+
+    func buildMenu() -> NSMenu {
+        let main = NSMenu()
+        func add(_ title: String, _ items: [NSMenuItem]) {
+            let item = NSMenuItem()
+            let menu = NSMenu(title: title)
+            items.forEach(menu.addItem)
+            item.submenu = menu
+            main.addItem(item)
+        }
+        func item(_ title: String, _ sel: Selector?, _ key: String = "",
+                  _ mods: NSEvent.ModifierFlags = .command, target: AnyObject? = nil) -> NSMenuItem {
+            let i = NSMenuItem(title: title, action: sel, keyEquivalent: key)
+            i.keyEquivalentModifierMask = mods
+            i.target = target
+            return i
+        }
+        let me = self
+        add("My Browser", [
+            item("About My Browser", #selector(NSApplication.orderFrontStandardAboutPanel(_:))),
+            .separator(),
+            item("Hide My Browser", #selector(NSApplication.hide(_:)), "h"),
+            item("Quit My Browser", #selector(NSApplication.terminate(_:)), "q"),
+        ])
+        add("File", [
+            item("New Tab", #selector(newTab), "t", target: me),
+            item("Open Location", #selector(focusAddress), "l", target: me),
+            item("Close Tab", #selector(closeTab), "w", target: me),
+            item("Restore Closed Tab", #selector(restoreTab), "T", [.command, .shift], target: me),
+        ])
+        add("Edit", [
+            item("Undo", Selector(("undo:")), "z"),
+            item("Redo", Selector(("redo:")), "Z", [.command, .shift]),
+            .separator(),
+            item("Cut", #selector(NSText.cut(_:)), "x"),
+            item("Copy", #selector(NSText.copy(_:)), "c"),
+            item("Paste", #selector(NSText.paste(_:)), "v"),
+            item("Select All", #selector(NSText.selectAll(_:)), "a"),
+            .separator(),
+            item("Copy URL", #selector(copyURL), "C", [.command, .shift], target: me),
+        ])
+        add("View", [
+            item("Toggle Sidebar", #selector(toggleSidebar), "s", target: me),
+            item("Reload", #selector(reload), "r", target: me),
+            item("Back", #selector(goBack), "[", target: me),
+            item("Forward", #selector(goForward), "]", target: me),
+        ])
+        add("Window", [
+            item("Minimize", #selector(NSWindow.performMiniaturize(_:)), "m"),
+            item("Zoom", #selector(NSWindow.performZoom(_:))),
+        ])
+        return main
+    }
+}

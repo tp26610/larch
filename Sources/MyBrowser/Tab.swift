@@ -1,0 +1,175 @@
+import AppKit
+import WebKit
+
+/// 一個分頁 = 一個 WKWebView。同時擔任它的 navigation / UI delegate。
+@MainActor
+final class Tab: NSObject, WKNavigationDelegate, WKUIDelegate {
+    let id = UUID()
+    let webView: WKWebView
+    /// 使用者改的名稱；nil 代表用網頁標題。
+    var customTitle: String? { didSet { onChange?(self) } }
+    private(set) var favicon: NSImage?
+    var onChange: ((Tab) -> Void)?
+
+    private var observations: [NSKeyValueObservation] = []
+    private var faviconTask: URLSessionDataTask?
+
+    var pageTitle: String { webView.title ?? "" }
+    var url: URL? { webView.url }
+    var isLoading: Bool { webView.isLoading }
+
+    var displayTitle: String {
+        if let c = customTitle, !c.isEmpty { return c }
+        if !pageTitle.isEmpty { return pageTitle }
+        if let host = url?.host { return host }
+        return "New Tab"
+    }
+
+    init(configuration: WKWebViewConfiguration) {
+        webView = WKWebView(frame: .zero, configuration: configuration)
+        super.init()
+        webView.navigationDelegate = self
+        webView.uiDelegate = self
+        webView.allowsBackForwardNavigationGestures = true
+        webView.underPageBackgroundColor = Theme.card
+        observations = [
+            webView.observe(\.title) { [weak self] _, _ in self?.notify() },
+            webView.observe(\.url) { [weak self] _, _ in self?.notify() },
+            webView.observe(\.isLoading) { [weak self] _, _ in self?.notify() },
+            webView.observe(\.canGoBack) { [weak self] _, _ in self?.notify() },
+            webView.observe(\.canGoForward) { [weak self] _, _ in self?.notify() },
+        ]
+    }
+
+    private func notify() {
+        MainActor.assumeIsolated { onChange?(self) }
+    }
+
+    func load(_ url: URL) {
+        webView.load(URLRequest(url: url))
+    }
+
+    func teardown() {
+        faviconTask?.cancel()
+        webView.stopLoading()
+        webView.navigationDelegate = nil
+        webView.uiDelegate = nil
+        observations.removeAll()
+        webView.removeFromSuperview()
+    }
+
+    // MARK: Navigation
+
+    func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction,
+                 decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
+        guard let scheme = navigationAction.request.url?.scheme?.lowercased() else {
+            decisionHandler(.allow)
+            return
+        }
+        // 只放行 http(s) 與 about/blob；mailto:、file:、自訂 scheme 一律拒絕。
+        decisionHandler(["http", "https", "about", "blob"].contains(scheme) ? .allow : .cancel)
+    }
+
+    func webView(_ webView: WKWebView, didCommit navigation: WKNavigation!) {
+        favicon = nil
+        notify()
+    }
+
+    func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+        loadFavicon()
+    }
+
+    /// 登入流程常用彈出視窗；全部留在同一個 view 內處理。
+    func webView(_ webView: WKWebView, createWebViewWith configuration: WKWebViewConfiguration,
+                 for navigationAction: WKNavigationAction, windowFeatures: WKWindowFeatures) -> WKWebView? {
+        if navigationAction.targetFrame == nil, InputNormalizer.isHTTP(navigationAction.request.url) {
+            webView.load(navigationAction.request)
+        }
+        return nil
+    }
+
+    // MARK: Permissions：預設全拒
+
+    func webView(_ webView: WKWebView, requestMediaCapturePermissionFor origin: WKSecurityOrigin,
+                 initiatedByFrame frame: WKFrameInfo, type: WKMediaCaptureType,
+                 decisionHandler: @escaping (WKPermissionDecision) -> Void) {
+        decisionHandler(.deny)
+    }
+
+    // MARK: JS 對話框與檔案選擇（網頁正常運作所需）
+
+    func webView(_ webView: WKWebView, runJavaScriptAlertPanelWithMessage message: String,
+                 initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping () -> Void) {
+        let alert = dialog(message, frame: frame)
+        alert.runModal()
+        completionHandler()
+    }
+
+    func webView(_ webView: WKWebView, runJavaScriptConfirmPanelWithMessage message: String,
+                 initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping (Bool) -> Void) {
+        let alert = dialog(message, frame: frame)
+        alert.addButton(withTitle: "Cancel")
+        completionHandler(alert.runModal() == .alertFirstButtonReturn)
+    }
+
+    func webView(_ webView: WKWebView, runJavaScriptTextInputPanelWithPrompt prompt: String, defaultText: String?,
+                 initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping (String?) -> Void) {
+        let alert = dialog(prompt, frame: frame)
+        alert.addButton(withTitle: "Cancel")
+        let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 260, height: 24))
+        field.stringValue = defaultText ?? ""
+        alert.accessoryView = field
+        completionHandler(alert.runModal() == .alertFirstButtonReturn ? field.stringValue : nil)
+    }
+
+    private func dialog(_ message: String, frame: WKFrameInfo) -> NSAlert {
+        let alert = NSAlert()
+        alert.messageText = frame.request.url?.host ?? "Page"
+        alert.informativeText = message
+        alert.addButton(withTitle: "OK")
+        return alert
+    }
+
+    func webView(_ webView: WKWebView, runOpenPanelWith parameters: WKOpenPanelParameters,
+                 initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping ([URL]?) -> Void) {
+        let panel = NSOpenPanel()
+        panel.allowsMultipleSelection = parameters.allowsMultipleSelection
+        panel.canChooseDirectories = parameters.allowsDirectories
+        panel.begin { completionHandler($0 == .OK ? panel.urls : nil) }
+    }
+
+    // MARK: Favicon
+
+    private func loadFavicon() {
+        guard let pageURL = webView.url, InputNormalizer.isHTTP(pageURL) else { return }
+        let js = "(document.querySelector('link[rel~=\"icon\"]')||{}).href||''"
+        webView.evaluateJavaScript(js) { [weak self] result, _ in
+            MainActor.assumeIsolated {
+                guard let self, self.webView.url == pageURL else { return }
+                var icon = URL(string: (result as? String) ?? "")
+                if !InputNormalizer.isHTTP(icon) {
+                    icon = URL(string: "/favicon.ico", relativeTo: pageURL)?.absoluteURL
+                }
+                guard let icon, InputNormalizer.isHTTP(icon) else { return }
+                self.fetchFavicon(icon, for: pageURL)
+            }
+        }
+    }
+
+    private func fetchFavicon(_ icon: URL, for pageURL: URL) {
+        faviconTask?.cancel()
+        var request = URLRequest(url: icon)
+        request.timeoutInterval = 5
+        faviconTask = URLSession.shared.dataTask(with: request) { [weak self] data, response, _ in
+            guard let data, (response as? HTTPURLResponse)?.statusCode == 200, let image = NSImage(data: data) else { return }
+            DispatchQueue.main.async {
+                MainActor.assumeIsolated {
+                    guard let self, self.webView.url == pageURL else { return }
+                    self.favicon = image
+                    self.notify()
+                }
+            }
+        }
+        faviconTask?.resume()
+    }
+}
