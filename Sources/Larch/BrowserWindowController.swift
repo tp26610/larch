@@ -27,7 +27,7 @@ final class BrowserWindowController: NSObject, NSTextFieldDelegate, NSWindowDele
         window.titlebarAppearsTransparent = true
         window.titleVisibility = .hidden
         window.isMovableByWindowBackground = true
-        window.appearance = NSAppearance(named: .darkAqua)
+        window.appearance = NSAppearance(named: .aqua)
         window.backgroundColor = Theme.panel
         window.minSize = NSSize(width: 640, height: 400)
         window.contentView = root

@@ -52,9 +52,9 @@ enum ErrorPage {
         <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'">
         <title>\(escape(title))</title>
         <style>
-        body{font:15px/1.5 -apple-system,sans-serif;background:#15161a;color:#e6e7ea;margin:0;display:grid;place-items:center;height:100vh}
-        main{max-width:520px;padding:24px}h1{font-size:22px;margin:0 0 8px}.u{color:#8b90a0;word-break:break-all}
-        a{color:#7aa2ff}.t{color:#8b90a0;font-size:12px;margin-top:24px}
+        body{font:15px/1.5 -apple-system,sans-serif;background:#ffffff;color:#1f2328;margin:0;display:grid;place-items:center;height:100vh}
+        main{max-width:520px;padding:24px}h1{font-size:22px;margin:0 0 8px}.u{color:#6b7280;word-break:break-all}
+        a{color:#2457d6}.t{color:#6b7280;font-size:12px;margin-top:24px}
         </style></head><body><main>
         <h1>\(escape(title))</h1><p>\(escape(detail))</p><p class="u">\(urlText)</p>\(retry)<p class="t">\(tech)</p>
         </main></body></html>

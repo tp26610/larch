@@ -7,7 +7,7 @@ enum Theme {
 
     // Sage green frame/sidebar sampled from Arc's theme (#699987); other tones are overlays on it.
     static let panel = NSColor(srgbRed: 0x69 / 255, green: 0x99 / 255, blue: 0x87 / 255, alpha: 1)
-    static let card = NSColor(srgbRed: 0x15 / 255, green: 0x16 / 255, blue: 0x1a / 255, alpha: 1)
+    static let card = NSColor.white
     static let field = NSColor(white: 1, alpha: 0.22)
     static let hover = NSColor(white: 1, alpha: 0.14)
     static let active = NSColor(white: 1, alpha: 0.28)
