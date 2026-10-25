@@ -24,3 +24,4 @@
 - smoke 測試（58 項）、打包腳本、--live-check
 - Session restore、預設瀏覽器註冊與外部連結、下載、載入失敗頁、尋找與縮放、HTTP 驗證、彈出視窗開新 Tab、歷史紀錄（無 UI）
 - ⌘T 命令列覆蓋層：開新 Tab / 搜尋、比對已開 Tab 與歷史（模糊比對）、上下鍵與 Esc、New Tab 按鈕共用
+- 雙擊視窗 bar 放大/還原（依系統設定）、Ctrl+W 關閉 Tab

@@ -303,6 +303,7 @@ enum Smoke {
         try await historyChecks(server, app)
         try await closeKeyChecks(server, app)
         try await paletteChecks(server, app)
+        try await doubleClickChecks(server, app)
     }
 }
 
@@ -636,7 +637,7 @@ extension Smoke {
         _ = press("t", .command, in: w)
         p.field.stringValue = "   "; p.refresh()
         _ = p.control(p.field, textView: NSTextView(), doCommandBy: #selector(NSResponder.insertNewline(_:)))
-        check("空白輸入沒有「開啟 / 搜尋」列、Enter 不開新 Tab", !p.items.contains { $0.kind == .openOrSearch } && tm.tabs.count == m || tm.tabs.count == m)
+        check("空白輸入沒有「開啟 / 搜尋」列、Enter 不開新 Tab", !p.items.contains { $0.kind == .openOrSearch } && tm.tabs.count == m)
         p.dismiss()
         // ⌘L 與 New Tab 按鈕
         check("⌘L 仍是聚焦網址列", press("l", .command, in: w) && !p.isOpen && c.addressField.currentEditor() != nil)
@@ -648,5 +649,48 @@ extension Smoke {
         let center = c.root.convert(NSPoint(x: card.midX, y: 12), to: nil)
         check("開啟時整個內容區的 hit-test 被覆蓋層攔下", c.root.hitTest(c.root.convert(center, from: nil)).map { $0 === p || $0.isDescendant(of: p) } == true)
         p.dismiss()
+    }
+
+    static func doubleClickChecks(_ server: FixtureServer, _ app: AppDelegate) async throws {
+        print("雙擊視窗 bar")
+        let c = app.controller!
+        guard let w = c.window as? LarchWindow else { check("視窗是 LarchWindow", false); return }
+        c.root.layoutSubtreeIfNeeded()
+        let card = c.root.card.frame
+        func win(_ p: NSPoint) -> NSPoint { c.root.convert(p, to: nil) }
+        check("外框（卡片下緣）算 bar", w.isDraggableBar(at: win(NSPoint(x: card.midX, y: 3))))
+        check("外框（卡片上緣）算 bar", w.isDraggableBar(at: win(NSPoint(x: card.midX, y: c.root.bounds.height - 3))))
+        check("側邊欄頂端空白（紅綠燈旁）算 bar", w.isDraggableBar(at: win(NSPoint(x: Theme.sidebarWidth - 20, y: c.root.bounds.height - 10))))
+        check("網頁卡片不算 bar", !w.isDraggableBar(at: win(NSPoint(x: card.midX, y: card.midY))))
+        let ab = c.sidebar.addressBar.convert(NSPoint(x: 20, y: 10), to: nil)
+        check("網址列不算 bar", !w.isDraggableBar(at: ab))
+        let bb = c.sidebar.backButton.convert(NSPoint(x: 5, y: 5), to: nil)
+        check("按鈕不算 bar", !w.isDraggableBar(at: bb))
+        if let row = c.sidebar.rowViews.first {
+            check("Tab 列不算 bar", !w.isDraggableBar(at: row.convert(NSPoint(x: 20, y: 10), to: nil)))
+        }
+        func defaults(_ v: String?) -> UserDefaults {
+            let d = UserDefaults(suiteName: "larch-dc-\(getpid())")!
+            d.removePersistentDomain(forName: "larch-dc-\(getpid())")
+            if let v { d.set(v, forKey: "AppleActionOnDoubleClick") }
+            return d
+        }
+        check("系統設定對應：未設定與 Maximize 為 Zoom", LarchWindow.doubleClickAction(defaults: defaults(nil)) == .zoom
+              && LarchWindow.doubleClickAction(defaults: defaults("Maximize")) == .zoom)
+        check("系統設定對應：Minimize / None", LarchWindow.doubleClickAction(defaults: defaults("Minimize")) == .minimize
+              && LarchWindow.doubleClickAction(defaults: defaults("None")) == .none)
+        check("雙擊卡片未被處理", !w.handleDoubleClick(at: win(NSPoint(x: card.midX, y: card.midY)), defaults: defaults(nil)))
+        // 真實 sendEvent 路徑：雙擊外框 → zoom 切換。
+        let was = w.isZoomed
+        let ev = NSEvent.mouseEvent(with: .leftMouseDown, location: win(NSPoint(x: card.midX, y: 3)), modifierFlags: [], timestamp: 0,
+                                    windowNumber: w.windowNumber, context: nil, eventNumber: 0, clickCount: 2, pressure: 1)!
+        let mode = LarchWindow.doubleClickAction()
+        w.sendEvent(ev)
+        if mode == .zoom {
+            check("雙擊外框 sendEvent → 視窗 zoom 狀態切換", await wait(3) { w.isZoomed != was })
+            if w.isZoomed != was { w.performZoom(nil); _ = await wait(3) { w.isZoomed == was } }
+        } else {
+            check("雙擊外框 sendEvent（系統設定非 Zoom，略過視窗狀態驗證）", true)
+        }
     }
 }
