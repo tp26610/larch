@@ -15,6 +15,7 @@ final class Tab: NSObject, WKNavigationDelegate, WKUIDelegate {
     var onPopup: ((WKWebViewConfiguration, Tab) -> Tab?)?
     /// 網頁呼叫 window.close()。
     weak var opener: Tab?
+    var onVisit: ((URL, String) -> Void)?
     var onRequestClose: ((Tab) -> Void)?
     var zoomStore: ZoomStore?
 
@@ -51,12 +52,22 @@ final class Tab: NSObject, WKNavigationDelegate, WKUIDelegate {
         webView.allowsBackForwardNavigationGestures = true
         webView.underPageBackgroundColor = Theme.card
         observations = [
-            webView.observe(\.title) { [weak self] _, _ in self?.notify() },
+            webView.observe(\.title) { [weak self] _, _ in
+                self?.notify()
+                MainActor.assumeIsolated { self?.updateVisitTitle() }
+            },
             webView.observe(\.url) { [weak self] _, _ in self?.notify() },
             webView.observe(\.isLoading) { [weak self] _, _ in self?.notify() },
             webView.observe(\.canGoBack) { [weak self] _, _ in self?.notify() },
             webView.observe(\.canGoForward) { [weak self] _, _ in self?.notify() },
         ]
+    }
+
+    private var visitedURL: URL?
+
+    /// 標題常在 didFinish 之後才到；補更新歷史標題。
+    private func updateVisitTitle() {
+        if let url = visitedURL, url == webView.url, !pageTitle.isEmpty, errorURL == nil { onVisit?(url, pageTitle) }
     }
 
     private func notify() {
@@ -150,6 +161,7 @@ final class Tab: NSObject, WKNavigationDelegate, WKUIDelegate {
     }
 
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+        if errorURL == nil, let url = webView.url, InputNormalizer.isHTTP(url) { visitedURL = url; onVisit?(url, pageTitle) }
         loadFavicon()
     }
 

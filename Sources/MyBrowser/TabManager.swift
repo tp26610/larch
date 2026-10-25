@@ -13,6 +13,7 @@ final class TabManager {
     let configuration: WKWebViewConfiguration
     let downloads: DownloadManager
     let zoom: ZoomStore
+    let history: HistoryStore?
     private(set) var tabs: [Tab] = []
     private(set) var activeTab: Tab?
     private(set) var closedStack: [ClosedTab] = []
@@ -24,7 +25,8 @@ final class TabManager {
     /// 某個分頁的標題、網址、載入狀態等有變。
     var onTabChange: ((Tab) -> Void)?
 
-    init(dataStore: WKWebsiteDataStore, downloads: DownloadManager? = nil, zoom: ZoomStore? = nil) {
+    init(dataStore: WKWebsiteDataStore, downloads: DownloadManager? = nil, zoom: ZoomStore? = nil, history: HistoryStore? = nil) {
+        self.history = history
         self.zoom = zoom ?? ZoomStore()
         self.downloads = downloads ?? DownloadManager()
         let config = WKWebViewConfiguration()
@@ -40,6 +42,7 @@ final class TabManager {
         tab.customTitle = customTitle
         tab.downloads = downloads
         tab.zoomStore = zoom
+        tab.onVisit = { [weak self] url, title in self?.history?.record(url: url, title: title) }
         tab.onChange = { [weak self] in self?.onTabChange?($0) }
         tab.onPopup = { [weak self] config, opener in self?.newTab(popupConfiguration: config, after: opener) }
         tab.onRequestClose = { [weak self] tab in self?.close(tab) }

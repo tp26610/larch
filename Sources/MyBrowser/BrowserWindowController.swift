@@ -17,7 +17,7 @@ final class BrowserWindowController: NSObject, NSTextFieldDelegate, NSWindowDele
 
     init(dataStore: WKWebsiteDataStore, storage: Storage, downloads: DownloadManager? = nil, zoom: ZoomStore? = nil, autosave: Bool) {
         self.storage = storage
-        tabs = TabManager(dataStore: dataStore, downloads: downloads, zoom: zoom)
+        tabs = TabManager(dataStore: dataStore, downloads: downloads, zoom: zoom, history: HistoryStore(storage: storage))
         window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1280, height: 820),
                           styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
                           backing: .buffered, defer: false)
@@ -90,6 +90,7 @@ final class BrowserWindowController: NSObject, NSTextFieldDelegate, NSWindowDele
     /// 結束前把尚未寫出的狀態存檔。
     func flushPersistence() {
         sessionSaver.flush { saveSession() }
+        tabs.history?.flush()
     }
 
     // MARK: 同步畫面

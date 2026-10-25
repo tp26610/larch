@@ -300,6 +300,7 @@ enum Smoke {
         try await errorPageChecks(server, app)
         try await findZoomChecks(server, app)
         try await authChecks(server, app)
+        try await historyChecks(server, app)
     }
 }
 
@@ -456,5 +457,33 @@ extension Smoke {
         t2.load(URL(string: "http://localhost:\(server.port)/auth")!)
         check("取消驗證不載入受保護內容", await wait { asked.count > before } && t2.pageTitle != "Authed")
         c.tabs.close(t2); c.tabs.close(t)
+    }
+}
+
+extension Smoke {
+    static func historyChecks(_ server: FixtureServer, _ app: AppDelegate) async throws {
+        print("歷史")
+        let storage = tempStorage("history")
+        let c = BrowserWindowController(dataStore: .nonPersistent(), storage: storage, autosave: false)
+        let h = c.tabs.history!
+        let t = c.tabs.newTab(url: server.url("/a"))
+        check("造訪後記錄 URL 與標題", await wait { h.entries.last?.title == "Page A" }, "\(h.entries)")
+        c.reload()
+        _ = await wait { !t.isLoading }
+        check("連續相同網址不重複", h.entries.filter { $0.url == server.url("/a").absoluteString }.count == 1)
+        c.submitAddress("http://127.0.0.1:9/")
+        try? await Task.sleep(nanoseconds: 500_000_000)
+        check("錯誤頁與非 http 不記錄", !h.entries.contains { $0.url.hasPrefix("about:") || $0.url.contains(":9/") })
+        check("搜尋標題", h.search("page a").count == 1 && h.search("zzz").isEmpty)
+        c.flushPersistence()
+        check("存檔後可重新載入", HistoryStore(storage: storage).entries.count == h.entries.count)
+        for i in 0..<3100 { h.record(url: URL(string: "https://example.com/\(i)")!, title: "n\(i)") }
+        check("超過 3000 筆裁到 2500 以內", h.entries.count <= HistoryStore.limit && h.entries.count >= HistoryStore.trimTo, "\(h.entries.count)")
+        check("保留最新的", h.entries.last?.url == "https://example.com/3099")
+        c.window.close()
+        let bad = tempStorage("history-bad")
+        try FileManager.default.createDirectory(at: bad.directory, withIntermediateDirectories: true)
+        try Data("garbage".utf8).write(to: bad.directory.appendingPathComponent(HistoryStore.fileName))
+        check("壞檔回到空歷史", HistoryStore(storage: bad).entries.isEmpty)
     }
 }
