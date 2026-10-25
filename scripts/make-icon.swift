@@ -1,4 +1,4 @@
-// 產生 assets/AppIcon.icns：鼠尾草綠圓角方塊 + 三層弧線組成的落葉松。
+// 產生 assets/AppIcon.icns：白底圓角方塊（同 Arc 的亮底）+ 三層鼠尾草綠的落葉松。
 // 用法：swift scripts/make-icon.swift
 import AppKit
 
@@ -11,7 +11,7 @@ func draw(_ ctx: CGContext, size s: CGFloat) {
 
     ctx.saveGState()
     ctx.setShadow(offset: CGSize(width: 0, height: -14), blur: 28, color: NSColor(white: 0, alpha: 0.35).cgColor)
-    ctx.setFillColor(NSColor(srgbRed: 0.41, green: 0.60, blue: 0.53, alpha: 1).cgColor)
+    ctx.setFillColor(NSColor(white: 0.97, alpha: 1).cgColor)
     ctx.addPath(path)
     ctx.fillPath()
     ctx.restoreGState()
@@ -20,29 +20,27 @@ func draw(_ ctx: CGContext, size s: CGFloat) {
     ctx.addPath(path)
     ctx.clip()
     let space = CGColorSpace(name: CGColorSpace.sRGB)!
-    let top = NSColor(srgbRed: 0.55, green: 0.74, blue: 0.65, alpha: 1).cgColor
-    let bottom = NSColor(srgbRed: 0.29, green: 0.48, blue: 0.40, alpha: 1).cgColor
+    let top = NSColor(white: 1, alpha: 1).cgColor
+    let bottom = NSColor(srgbRed: 0.93, green: 0.95, blue: 0.94, alpha: 1).cgColor
     let grad = CGGradient(colorsSpace: space, colors: [top, bottom] as CFArray, locations: [0, 1])!
     ctx.drawLinearGradient(grad, start: CGPoint(x: 512, y: 924), end: CGPoint(x: 512, y: 100), options: [])
-    // 上緣高光
-    let glow = CGGradient(colorsSpace: space,
-                          colors: [NSColor(white: 1, alpha: 0.22).cgColor, NSColor(white: 1, alpha: 0).cgColor] as CFArray,
-                          locations: [0, 1])!
-    ctx.drawLinearGradient(glow, start: CGPoint(x: 512, y: 924), end: CGPoint(x: 512, y: 640), options: [])
     ctx.restoreGState()
 
     // 三層疊起來的落葉松（由下到上漸亮）+ 樹幹
-    func tone(_ v: CGFloat) -> CGColor { NSColor(srgbRed: v * 0.93, green: v * 0.97, blue: v * 0.95, alpha: 1).cgColor }
+    // v: 0（最深）~ 1（最亮）；由下到上漸亮的鼠尾草綠
+    func tone(_ v: CGFloat) -> CGColor {
+        NSColor(srgbRed: 0.24 + 0.22 * v, green: 0.45 + 0.21 * v, blue: 0.36 + 0.20 * v, alpha: 1).cgColor
+    }
     ctx.saveGState()
     ctx.setLineJoin(.round)
     ctx.setLineWidth(30)
     let trunk = CGPath(roundedRect: CGRect(x: 482, y: 270, width: 60, height: 150), cornerWidth: 14, cornerHeight: 14, transform: nil)
     ctx.saveGState()
-    ctx.setShadow(offset: CGSize(width: 0, height: -8), blur: 14, color: NSColor(white: 0, alpha: 0.22).cgColor)
-    ctx.setFillColor(tone(0.90)); ctx.addPath(trunk); ctx.fillPath()
+    ctx.setShadow(offset: CGSize(width: 0, height: -8), blur: 14, color: NSColor(white: 0, alpha: 0.20).cgColor)
+    ctx.setFillColor(tone(0.10)); ctx.addPath(trunk); ctx.fillPath()
     ctx.restoreGState()
     let tiers: [(apex: CGFloat, base: CGFloat, half: CGFloat, v: CGFloat)] = [
-        (640, 380, 255, 0.93), (725, 505, 190, 0.97), (805, 625, 130, 1.0),
+        (640, 380, 255, 0.15), (725, 505, 190, 0.55), (805, 625, 130, 1.0),
     ]
     for t in tiers {
         let tri = CGMutablePath()
@@ -52,7 +50,7 @@ func draw(_ ctx: CGContext, size s: CGFloat) {
         tri.closeSubpath()
         ctx.setFillColor(tone(t.v)); ctx.setStrokeColor(tone(t.v))
         ctx.saveGState()
-        ctx.setShadow(offset: CGSize(width: 0, height: -8), blur: 14, color: NSColor(white: 0, alpha: 0.22).cgColor)
+        ctx.setShadow(offset: CGSize(width: 0, height: -8), blur: 14, color: NSColor(white: 0, alpha: 0.20).cgColor)
         ctx.beginTransparencyLayer(auxiliaryInfo: nil)
         ctx.addPath(tri); ctx.drawPath(using: .fillStroke)
         ctx.endTransparencyLayer()
