@@ -15,8 +15,9 @@ Brian（Senior Engineering Manager，台灣，用繁體中文溝通）因 Arc �
 ```bash
 swift build
 swift run MyBrowser                 # 執行
-scripts/smoke.sh                    # 58 項煙霧測試，驅動真實視窗與 WKWebView（會開視窗）
-scripts/bundle.sh                   # build/My Browser.app
+scripts/smoke.sh                    # 105 項煙霧測試，驅動真實視窗與 WKWebView（會開視窗）
+scripts/bundle.sh                   # build/My Browser.app（Info.plist 含 http/https、html 宣告）
+scripts/install.sh                  # 安裝到 /Applications（見 README）
 .build/debug/MyBrowser --live-check https://accounts.google.com /tmp/out
                                     # 真實網站檢查：印標題/網址，存 /tmp/out-sidebar.png、/tmp/out-page.png
 ```
@@ -33,6 +34,11 @@ TabRowView.swift                 一列 Tab：favicon、標題、載入光條、
 Tab.swift                        一個 WKWebView + navigation/UI delegate、favicon、權限
 TabManager.swift                 tabs、activeTab、closedStack(25)、選取與關閉邏輯
 InputNormalizer.swift            網址/搜尋判斷（對應 my-browser util.js normalizeInput）
+Storage.swift                    Application Support JSON 讀寫（容錯）+ Debouncer
+SessionStore.swift               重開還原 Tab（session.json）；HistoryStore 在 History.swift
+DownloadManager.swift            WKDownload → 下載資料夾，重名加序號
+ErrorPage.swift                  載入失敗說明頁（全部跳脫、CSP 禁腳本）
+FindBar.swift                    頁內尋找列 + ZoomStore（以 host 記縮放，存 UserDefaults）
 Theme.swift                      顏色與尺寸
 Smoke.swift                      FixtureServer（本機假網站）+ smoke 檢查 + liveCheck
 ```
@@ -49,9 +55,18 @@ Smoke.swift                      FixtureServer（本機假網站）+ smoke 檢�
 7. smoke 用 `NSApp.mainMenu.performKeyEquivalent` 走真實選單比對，等同按鍵路徑。
 8. 沒有螢幕錄製權限時 `screencapture` 會失敗；改用 `--live-check` 存 PNG。
 
+9. **NSWindow 要設 `isReleasedWhenClosed = false`**，否則 close() 後 ARC 重複釋放會 segfault。
+10. **WebKit 對受限連接埠（如 1）回 WebKitErrorDomain 102**，與「載入被轉成下載」同碼；錯誤頁忽略 102，測連不上要用已關閉的真實埠。
+11. **彈出視窗**：`createWebViewWith` 必須用 WebKit 給的 configuration 建新 Tab 並回傳其 webView，window.opener/postMessage 才會通；`webViewDidClose` 對應 window.close()。
+12. 憑證錯誤不實作 server trust 挑戰，走預設處理 → 錯誤頁，刻意不提供略過。HTTP 驗證憑證用 `persistence: .none`。
+13. 外部連結入口是 `application(_:open:)`；冷啟動時 controller 可能還沒建好，先放進 `pendingURLs`。本機 .html 只放行該檔案的導覽（`allowedFileURL`）；網址列與其他來源的 file: 一律拒絕。
+14. 下載、歷史、session 路徑在 smoke 模式都導到暫存資料夾，不碰真實資料。
+15. 說明頁（loadHTMLString）在上一頁/下一頁的歷史行為未驗證；重新整理在說明頁上會重試原網址（`reloadOrRetry`）。
+
 ## 驗證狀況
-- smoke 58/58 通過（macOS 26 / Swift 6.2.4）；accounts.google.com 登入頁載入成功（含 favicon）。
-- 尚未在真實視窗手動驗證：拖曳視窗手感、紅綠燈位置、側邊欄隱藏後紅綠燈浮在網頁上、捲動手感、Google 實際帳密登入與重開後保持登入（只驗證登入頁載入；持久性依據實驗專案的結果）、下載、HTTP 驗證對話框、全螢幕影片。
+- smoke 105/105 通過（macOS 26 / Swift 6.2.4）；accounts.google.com 登入頁載入成功（含 favicon）。
+- 冷啟動與已執行時 `open -a` 開外部連結已用打包的 .app 實測（session.json 有新 Tab）。
+- 尚未在真實視窗手動驗證：實際把它設為預設瀏覽器、真實鍵盤的 ⌘= 放大、拖曳視窗手感、紅綠燈位置、側邊欄隱藏後紅綠燈浮在網頁上、捲動手感、Google 實際帳密登入與重開後保持登入（只驗證登入頁載入；持久性依據實驗專案的結果）、下載、HTTP 驗證對話框、全螢幕影片。
 
 ## Backlog
 見 `BACKLOG.md`；開工前先讀，完成後移到「已完成」。
