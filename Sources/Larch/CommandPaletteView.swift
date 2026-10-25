@@ -236,13 +236,30 @@ final class CommandPaletteView: NSView, NSTextFieldDelegate {
             row.widthAnchor.constraint(equalTo: list.widthAnchor).isActive = true
             return row
         }
+        // 換了一批結果：回到最上面（否則會停在舊的捲動位置，選取列在畫面外）。
+        scroll.contentView.scroll(to: .zero)
+        scroll.reflectScrolledClipView(scroll.contentView)
         updateSelection()
         needsLayout = true
     }
 
     private func updateSelection() {
         for (i, r) in rowViews.enumerated() { r.isSelected = i == selectedIndex }
-        if rowViews.indices.contains(selectedIndex) { listDoc.scrollToVisible(rowViews[selectedIndex].frame.insetBy(dx: 0, dy: -4)) }
+        ensureSelectedVisible()
+    }
+
+    /// 以列高計算位置（不依賴尚未版面的 frame），把選取的列捲進可視範圍。
+    private func ensureSelectedVisible() {
+        guard !rowViews.isEmpty else { return }
+        let y = CGFloat(selectedIndex) * (Self.rowHeight + Self.rowSpacing)
+        listDoc.scrollToVisible(NSRect(x: 0, y: y - 4, width: 1, height: Self.rowHeight + 8))
+    }
+
+    /// 目前捲動的可視範圍（文件座標）。
+    var visibleListRect: NSRect { scroll.contentView.bounds }
+    /// 選取列在文件座標中的位置。
+    var selectedRowRect: NSRect {
+        NSRect(x: 0, y: CGFloat(selectedIndex) * (Self.rowHeight + Self.rowSpacing), width: 1, height: Self.rowHeight)
     }
 
     func moveSelection(_ delta: Int) {
@@ -304,6 +321,7 @@ final class CommandPaletteView: NSView, NSTextFieldDelegate {
         scroll.frame = NSRect(x: 8, y: Self.fieldHeight + 9, width: w - 16, height: viewH)
         listDoc.frame = NSRect(x: 0, y: 0, width: w - 16, height: contentH)
         list.frame = listDoc.bounds
+        ensureSelectedVisible()
     }
 
     /// 點面板外關閉；面板內的點擊由子視圖處理。

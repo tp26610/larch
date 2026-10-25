@@ -1184,6 +1184,24 @@ extension Smoke {
         check("空輸入：最近使用的 Tab 排在最前", p.items.first(where: { $0.kind == .tab }).map { if case .switchTab(let t) = $0.action { return t === latest } else { return false } } == true)
         c.root.layoutSubtreeIfNeeded()
         check("列數多時最多顯示 8 列（其餘捲動）", p.items.count > 8 && p.visibleRowCount == 8 && p.panelFrame.height > 8 * 46 && p.panelFrame.height < 9 * 48 + 90, "\(p.items.count) \(p.visibleRowCount) \(p.panelFrame)")
+        // 捲動：↑↓ 時選取列一定在可視範圍內；換結果回到最上面。
+        func selectedVisible() -> Bool { c.root.layoutSubtreeIfNeeded(); return p.visibleListRect.insetBy(dx: -1, dy: -1).contains(p.selectedRowRect) }
+        c.openPalette(prefill: nil)
+        c.root.layoutSubtreeIfNeeded()
+        var allVisible = true
+        var firstBad = ""
+        for _ in 0..<(p.items.count + 2) { p.moveSelection(1); let ok = selectedVisible(); if !ok && firstBad.isEmpty { firstBad = "sel=\(p.selectedIndex) vis=\(p.visibleListRect) row=\(p.selectedRowRect)" }; allVisible = allVisible && ok }
+        check("連按 ↓ 繞一圈：選取列始終在可視範圍內", allVisible && p.items.count > 8, "n=\(p.items.count) \(firstBad)")
+        p.moveSelection(-1)
+        check("↑ 從第一列繞到最後一列：捲到最後並可見", selectedVisible())
+        p.field.stringValue = "b"; p.refresh()
+        c.root.layoutSubtreeIfNeeded()
+        check("換查詢後回到最上面且選取第一列可見", p.visibleListRect.minY <= 0.5 && p.selectedIndex == 0 && selectedVisible())
+        c.openPalette(prefill: nil); _ = cmd(#selector(NSResponder.insertTab(_:)))
+        for _ in 0..<12 { p.moveSelection(1) }
+        p.field.stringValue = "re"; p.refresh()
+        c.root.layoutSubtreeIfNeeded()
+        check("動作模式捲到下面再改輸入：第一列（Restore 等）回到可見", p.visibleListRect.minY <= 0.5 && selectedVisible())
         p.dismiss()
         if let dir = ProcessInfo.processInfo.environment["LARCH_SHOT_DIR"] { await paletteShots(c, server, dir) }
         c.window.close()

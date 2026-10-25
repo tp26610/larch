@@ -15,7 +15,7 @@ Brian（Senior Engineering Manager，台灣，用繁體中文溝通）因 Arc �
 ```bash
 swift build
 swift run Larch                 # 執行
-scripts/smoke.sh                    # 259 項煙霧測試，驅動真實視窗與 WKWebView（會開視窗）
+scripts/smoke.sh                    # 263 項煙霧測試，驅動真實視窗與 WKWebView（會開視窗）
 scripts/bundle.sh                   # build/Larch.app（Info.plist 含 http/https、html 宣告）
 scripts/install.sh                  # 安裝到 /Applications（見 README）
 .build/debug/Larch --live-check https://accounts.google.com /tmp/out
@@ -72,7 +72,7 @@ Smoke.swift                      FixtureServer（本機假網站）+ smoke 檢�
 15. 說明頁（loadHTMLString）在上一頁/下一頁的歷史行為未驗證；重新整理在說明頁上會重試原網址（`reloadOrRetry`）。
 16. **⌘W / Ctrl+W 由 `LarchWindow.performKeyEquivalent` 先交給選單**：焦點在 WKWebView 時，按鍵會先送進網頁、沒被 preventDefault 才非同步回頭比對選單，網頁可擋掉、smoke 也會變成非同步。Ctrl+W 是 File 選單裡獨立的「Close Tab (Ctrl+W)」項目。關閉最後一個 Tab 會補一個空白 Tab（視窗不關）。
 
-17. **⌘T 是命令列覆蓋層，不是直接新增空白 Tab**：`RootView.palette`（`CommandPaletteView`）蓋在整個視窗內容上，開啟時 `hitTest` 吞掉所有滑鼠事件，面板置中於網頁卡片。第一列固定「Open / Search: 輸入」→ 新 Tab；其次是已開啟的 Tab（切換、不開新 Tab）、歷史（新 Tab，已開啟的網址不重複）。標題與網址一律 `stringValue` 純文字。Esc 或點面板外關閉並把焦點還給原處；選取後焦點交給網頁。⌘L 也叫出同一個覆蓋層但走「目前 Tab 導航」模式（`showAddressPalette`、`paletteNavigatesCurrentTab`：預填目前網址並全選，開啟/搜尋與歷史在目前 Tab 載入，不開新 Tab；已開 Tab 與釘選仍是切換）；側邊欄網址列保留，可直接點擊輸入。**動作模式**：覆蓋層 `mode`（`PaletteMode.normal/.actions`）；`insertTab:` 進入、`insertBacktab:` 或空輸入的 `deleteBackward:` 離開（`CommandPaletteView.control`），chip 與提示文字隨模式變化，`PaletteSearch.actionResults` 只列 `isAvailable` 的動作（標題與關鍵字模糊比對，空查詢依表順序）。**新增動作 = 在 `PaletteActions.all` 加一項**（run 呼叫 controller 既有方法，不複製邏輯），快捷鍵提示是顯示用字串，要和選單一致。一般模式不列動作；Tab 排序 = 模糊分數 + 最近使用加成（`Tab.lastActiveAt`）。列最多顯示 8 列（`maxVisibleRows`），其餘用滾輪/↑↓ 捲動（刻意不顯示捲軸，避免「永遠顯示捲軸」讓內容變窄）。Open Web Inspector 用 WebKit 私有的 `_inspector.show`（`responds(to:)` 檢查，取不到就不列），`isInspectable = true`。Electron 版的 Cmd/Ctrl+Enter 是 Little Arc 的行為，不適用於 Palette。`PaletteMode` 預留 `.switcher`（Ctrl+Tab MRU 切換器之後重用）。外觀：`docs/palette-normal.png`、`docs/palette-actions.png`（smoke 在 `LARCH_SHOT_DIR` 時產生）。日後擴充其他來源：在 `PaletteItem.Action` 加 case、在 `PaletteSearch.results` 加來源。截圖/除錯：`Larch --open-palette 關鍵字` 啟動後直接叫出覆蓋層（直接執行會讀寫真實 session/history）；外觀截圖見 `docs/palette.png`。
+17. **⌘T 是命令列覆蓋層，不是直接新增空白 Tab**：`RootView.palette`（`CommandPaletteView`）蓋在整個視窗內容上，開啟時 `hitTest` 吞掉所有滑鼠事件，面板置中於網頁卡片。第一列固定「Open / Search: 輸入」→ 新 Tab；其次是已開啟的 Tab（切換、不開新 Tab）、歷史（新 Tab，已開啟的網址不重複）。標題與網址一律 `stringValue` 純文字。Esc 或點面板外關閉並把焦點還給原處；選取後焦點交給網頁。⌘L 也叫出同一個覆蓋層但走「目前 Tab 導航」模式（`showAddressPalette`、`paletteNavigatesCurrentTab`：預填目前網址並全選，開啟/搜尋與歷史在目前 Tab 載入，不開新 Tab；已開 Tab 與釘選仍是切換）；側邊欄網址列保留，可直接點擊輸入。**動作模式**：覆蓋層 `mode`（`PaletteMode.normal/.actions`）；`insertTab:` 進入、`insertBacktab:` 或空輸入的 `deleteBackward:` 離開（`CommandPaletteView.control`），chip 與提示文字隨模式變化，`PaletteSearch.actionResults` 只列 `isAvailable` 的動作（標題與關鍵字模糊比對，空查詢依表順序）。**新增動作 = 在 `PaletteActions.all` 加一項**（run 呼叫 controller 既有方法，不複製邏輯），快捷鍵提示是顯示用字串，要和選單一致。一般模式不列動作；Tab 排序 = 模糊分數 + 最近使用加成（`Tab.lastActiveAt`）。列最多顯示 8 列（`maxVisibleRows`），其餘用滾輪/↑↓ 捲動（選取列以「列高 × 索引」計算位置並在每次 layout 後捲進可視範圍，換一批結果會回到最上面；舊版用尚未版面的 row.frame 導致選取列跑出畫面）（刻意不顯示捲軸，避免「永遠顯示捲軸」讓內容變窄）。Open Web Inspector 用 WebKit 私有的 `_inspector.show`（`responds(to:)` 檢查，取不到就不列），`isInspectable = true`。Electron 版的 Cmd/Ctrl+Enter 是 Little Arc 的行為，不適用於 Palette。`PaletteMode` 預留 `.switcher`（Ctrl+Tab MRU 切換器之後重用）。外觀：`docs/palette-normal.png`、`docs/palette-actions.png`（smoke 在 `LARCH_SHOT_DIR` 時產生）。日後擴充其他來源：在 `PaletteItem.Action` 加 case、在 `PaletteSearch.results` 加來源。截圖/除錯：`Larch --open-palette 關鍵字` 啟動後直接叫出覆蓋層（直接執行會讀寫真實 session/history）；外觀截圖見 `docs/palette.png`。
 
 18. **雙擊 bar 放大/還原**：標題列隱藏 + `isMovableByWindowBackground` 時系統不處理雙擊，由 `LarchWindow.sendEvent` 攔 `clickCount == 2`：hit-test 的整條祖先鏈都 `mouseDownCanMoveWindow == true`（外框、側邊欄空白）才算 bar，依 `AppleActionOnDoubleClick` 做 `performZoom`（預設 / Maximize）、`performMiniaturize`（Minimize）或不動（None）。網頁卡片、Tab 列、按鈕、網址列不處理；卡片底下仍不可有拖曳區域（第 1 點）。
 
@@ -84,7 +84,7 @@ Smoke.swift                      FixtureServer（本機假網站）+ smoke 檢�
 22. **拖曳**：`SidebarView` 是整個清單的拖曳目的地（剪貼簿型別 `app.larch.sidebar-item`，字串 `tab:<uuid>` / `pin:<uuid>`）；它只做幾何（找到游標下的列與列內位置 0~1）與畫提示，語意交給 `BrowserWindowController.resolveDrop`（回傳 `DropPlan`：提示樣式 + commit）。規則：資料夾列上 25% 之前、下 25% 之後（收合或空資料夾才算「之後」）、中間放進去；釘選 Tab 列上/下半；分隔線 = 釘到最上層末尾 / 取消釘選；一般列重排；資料夾不能放進自己的子孫或一般區；灰色釘選拖到一般區會以該網址開成一般 Tab。smoke 以假的 `NSDraggingInfo` 走 `draggingUpdated` / `performDragOperation`，真實滑鼠拖曳（拖曳影像、自動捲動手感）沒有實測。截圖/排版參考 `docs/pins.png`（smoke 在 `LARCH_SHOT_DIR=<資料夾>` 時於暫存資料產生，不碰真實資料）。
 
 ## 驗證狀況
-- smoke 259/259 通過（macOS 26 / Swift 6.2.4）；accounts.google.com 登入頁載入成功（含 favicon）。
+- smoke 263/263 通過（macOS 26 / Swift 6.2.4）；accounts.google.com 登入頁載入成功（含 favicon）。
 - 冷啟動與已執行時 `open -a` 開外部連結已用打包的 .app 實測（session.json 有新 Tab）。
 - 尚未在真實視窗手動驗證：實際把它設為預設瀏覽器、真實鍵盤的 ⌘= 放大、拖曳視窗手感、紅綠燈位置、側邊欄隱藏時滑鼠實際移到左上角的紅綠燈淡入淡出、全螢幕進出、捲動手感、Google 實際帳密登入與重開後保持登入（只驗證登入頁載入；持久性依據實驗專案的結果）、下載、HTTP 驗證對話框、全螢幕影片。
 
