@@ -40,7 +40,8 @@ final class FixtureServer: @unchecked Sendable {
             guard let self, let data, let req = String(data: data, encoding: .utf8) else { conn.cancel(); return }
             let path = req.split(separator: " ").dropFirst().first.map(String.init) ?? "/"
             let (type, body, delay) = Self.route(path)
-            let head = "HTTP/1.1 200 OK\r\nContent-Type: \(type)\r\nContent-Length: \(body.count)\r\nConnection: close\r\n\r\n"
+            let extra = path.hasPrefix("/file") ? "Content-Disposition: attachment; filename=\"report.txt\"\r\n" : ""
+            let head = "HTTP/1.1 200 OK\r\nContent-Type: \(type)\r\n\(extra)Content-Length: \(body.count)\r\nConnection: close\r\n\r\n"
             self.queue.asyncAfter(deadline: .now() + delay) {
                 conn.send(content: Data(head.utf8) + body, completion: .contentProcessed { _ in conn.cancel() })
             }
@@ -59,6 +60,7 @@ final class FixtureServer: @unchecked Sendable {
         case "/slow": return ("text/html; charset=utf-8", html("Slow Page"), 1.5)
         case "/popup": return ("text/html; charset=utf-8", html("Popup Opener", "<a id=\"l\" href=\"/b\" target=\"_blank\">b</a>"), 0)
         case "/xss": return ("text/html; charset=utf-8", html("<img src=x onerror=document.title='pwned'>"), 0)
+        case "/file": return ("text/plain", Data("hello download".utf8), 0)
         case "/icon.png":
             let rep = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: 16, pixelsHigh: 16, bitsPerSample: 8, samplesPerPixel: 4,
                                        hasAlpha: true, isPlanar: false, colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0)!
@@ -273,6 +275,7 @@ enum Smoke {
 
         try await sessionChecks(server, app)
         try await externalChecks(server, app)
+        try await downloadChecks(server, app)
     }
 }
 
@@ -332,5 +335,24 @@ extension Smoke {
         check("本機 .html 可開，mailto 忽略", await wait { c.tabs.activeTab?.pageTitle == "本機檔案" } && c.tabs.tabs.count == before + 2)
         c.submitAddress(file.absoluteString)
         check("網址列仍拒絕 file:", c.tabs.activeTab?.pageTitle == "本機檔案")
+    }
+}
+
+extension Smoke {
+    static func downloadChecks(_ server: FixtureServer, _ app: AppDelegate) async throws {
+        print("下載")
+        let c = app.controller!
+        let dm = c.tabs.downloads
+        let t = c.tabs.newTab()
+        t.load(server.url("/file?1"))
+        check("附件被下載而非顯示", await wait { dm.latest?.state == .finished })
+        let first = dm.directory.appendingPathComponent("report.txt")
+        check("存成 report.txt 且內容正確", (try? String(contentsOf: first, encoding: .utf8)) == "hello download")
+        check("側邊欄顯示完成提示", !c.sidebar.downloadButton.isHidden && c.sidebar.downloadButton.title.contains("report.txt"))
+        t.load(server.url("/file?2"))
+        check("重名加序號", await wait { FileManager.default.fileExists(atPath: dm.directory.appendingPathComponent("report (1).txt").path) })
+        check("檔名不可穿越路徑", dm.uniqueDestination(for: "../../evil.txt").deletingLastPathComponent().path == dm.directory.path
+              && dm.uniqueDestination(for: ".hidden").lastPathComponent == "hidden")
+        c.tabs.close(t)
     }
 }

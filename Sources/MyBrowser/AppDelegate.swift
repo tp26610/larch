@@ -14,7 +14,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let store: WKWebsiteDataStore = smoke ? .nonPersistent() : .default()
         let storage = smoke ? Storage(directory: FileManager.default.temporaryDirectory.appendingPathComponent("mybrowser-smoke-\(getpid())"))
                             : .standard
-        controller = BrowserWindowController(dataStore: store, storage: storage, autosave: !smoke)
+        controller = BrowserWindowController(dataStore: store, storage: storage, downloads: DownloadManager(directory: smoke ? storage.directory.appendingPathComponent("Downloads") : FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask)[0]), autosave: !smoke)
         NSApp.activate(ignoringOtherApps: true)
         // 命令列給的網址在新分頁開啟（open -a ... --args URL）。
         for arg in CommandLine.arguments.dropFirst() {

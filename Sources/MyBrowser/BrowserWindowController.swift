@@ -15,9 +15,9 @@ final class BrowserWindowController: NSObject, NSTextFieldDelegate, NSWindowDele
     var sidebar: SidebarView { root.sidebar }
     var addressField: NSTextField { root.sidebar.addressBar.field }
 
-    init(dataStore: WKWebsiteDataStore, storage: Storage, autosave: Bool) {
+    init(dataStore: WKWebsiteDataStore, storage: Storage, downloads: DownloadManager? = nil, autosave: Bool) {
         self.storage = storage
-        tabs = TabManager(dataStore: dataStore)
+        tabs = TabManager(dataStore: dataStore, downloads: downloads)
         window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1280, height: 820),
                           styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
                           backing: .buffered, defer: false)
@@ -45,6 +45,9 @@ final class BrowserWindowController: NSObject, NSTextFieldDelegate, NSWindowDele
         sidebar.newTabButton.target = self
         sidebar.newTabButton.action = #selector(newTab)
 
+        sidebar.downloadButton.target = self
+        sidebar.downloadButton.action = #selector(downloadClicked)
+        tabs.downloads.onChange = { [weak self] in self?.sidebar.showDownload($0) }
         tabs.onStructureChange = { [weak self] in self?.rebuildRows() }
         tabs.onActiveChange = { [weak self] in self?.activeChanged() }
         tabs.onTabChange = { [weak self] in self?.tabChanged($0) }
@@ -142,6 +145,11 @@ final class BrowserWindowController: NSObject, NSTextFieldDelegate, NSWindowDele
     }
 
     // MARK: 動作
+
+    @objc func downloadClicked() {
+        tabs.downloads.revealLatest()
+        if case .finished? = tabs.downloads.latest?.state { tabs.downloads.dismiss() }
+    }
 
     @objc func newTab() {
         tabs.newTab()

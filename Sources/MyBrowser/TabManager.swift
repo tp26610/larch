@@ -11,6 +11,7 @@ final class TabManager {
     static let maxClosed = 25
 
     let configuration: WKWebViewConfiguration
+    let downloads: DownloadManager
     private(set) var tabs: [Tab] = []
     private(set) var activeTab: Tab?
     private(set) var closedStack: [ClosedTab] = []
@@ -22,7 +23,8 @@ final class TabManager {
     /// 某個分頁的標題、網址、載入狀態等有變。
     var onTabChange: ((Tab) -> Void)?
 
-    init(dataStore: WKWebsiteDataStore) {
+    init(dataStore: WKWebsiteDataStore, downloads: DownloadManager? = nil) {
+        self.downloads = downloads ?? DownloadManager()
         let config = WKWebViewConfiguration()
         config.websiteDataStore = dataStore
         config.preferences.isElementFullscreenEnabled = true
@@ -33,6 +35,7 @@ final class TabManager {
     func newTab(url: URL? = nil, customTitle: String? = nil, activate: Bool = true) -> Tab {
         let tab = Tab(configuration: configuration)
         tab.customTitle = customTitle
+        tab.downloads = downloads
         tab.onChange = { [weak self] in self?.onTabChange?($0) }
         tabs.append(tab)
         onStructureChange?()

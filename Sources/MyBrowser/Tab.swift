@@ -10,6 +10,7 @@ final class Tab: NSObject, WKNavigationDelegate, WKUIDelegate {
     var customTitle: String? { didSet { onChange?(self) } }
     private(set) var favicon: NSImage?
     var onChange: ((Tab) -> Void)?
+    weak var downloads: DownloadManager?
 
     private var observations: [NSKeyValueObservation] = []
     private var faviconTask: URLSessionDataTask?
@@ -79,12 +80,32 @@ final class Tab: NSObject, WKNavigationDelegate, WKUIDelegate {
             decisionHandler(.allow)
             return
         }
+        if navigationAction.shouldPerformDownload {
+            decisionHandler(.download)
+            return
+        }
         if scheme == "file", let allowed = allowedFileURL, navigationAction.request.url?.standardizedFileURL == allowed {
             decisionHandler(.allow)
             return
         }
         // 只放行 http(s) 與 about/blob；mailto:、file:、自訂 scheme 一律拒絕。
         decisionHandler(["http", "https", "about", "blob"].contains(scheme) ? .allow : .cancel)
+    }
+
+    func webView(_ webView: WKWebView, decidePolicyFor navigationResponse: WKNavigationResponse,
+                 decisionHandler: @escaping (WKNavigationResponsePolicy) -> Void) {
+        let disposition = (navigationResponse.response as? HTTPURLResponse)?
+            .value(forHTTPHeaderField: "Content-Disposition")?.lowercased() ?? ""
+        let attachment = disposition.hasPrefix("attachment")
+        decisionHandler(attachment || !navigationResponse.canShowMIMEType ? .download : .allow)
+    }
+
+    func webView(_ webView: WKWebView, navigationAction: WKNavigationAction, didBecome download: WKDownload) {
+        downloads?.adopt(download)
+    }
+
+    func webView(_ webView: WKWebView, navigationResponse: WKNavigationResponse, didBecome download: WKDownload) {
+        downloads?.adopt(download)
     }
 
     func webView(_ webView: WKWebView, didCommit navigation: WKNavigation!) {

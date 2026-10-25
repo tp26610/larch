@@ -45,6 +45,7 @@ final class SidebarView: NSView {
     let reloadButton = SidebarView.iconButton("arrow.clockwise", "Reload")
     let addressBar = AddressBar()
     let newTabButton = NSButton()
+    let downloadButton = NSButton()
     private let scrollView = NSScrollView()
     private let listContainer = FlippedView()
     private let stack = NSStackView()
@@ -75,7 +76,18 @@ final class SidebarView: NSView {
         scrollView.scrollerStyle = .overlay
         listContainer.translatesAutoresizingMaskIntoConstraints = false
 
-        for v in [toolbar, addressBar, scrollView, newTabButton] {
+        downloadButton.isBordered = false
+        downloadButton.alignment = .left
+        downloadButton.contentTintColor = Theme.accent
+        downloadButton.font = .systemFont(ofSize: 12)
+        downloadButton.lineBreakMode = .byTruncatingMiddle
+        downloadButton.isHidden = true
+        let bottom = NSStackView(views: [downloadButton, newTabButton])
+        bottom.orientation = .vertical
+        bottom.alignment = .leading
+        bottom.spacing = 0
+
+        for v in [toolbar, addressBar, scrollView, bottom] {
             v.translatesAutoresizingMaskIntoConstraints = false
             addSubview(v)
         }
@@ -90,11 +102,14 @@ final class SidebarView: NSView {
             scrollView.topAnchor.constraint(equalTo: addressBar.bottomAnchor, constant: 8),
             scrollView.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 8),
             scrollView.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -8),
-            scrollView.bottomAnchor.constraint(equalTo: newTabButton.topAnchor, constant: -4),
-            newTabButton.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 16),
-            newTabButton.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -8),
-            newTabButton.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -8),
+            scrollView.bottomAnchor.constraint(equalTo: bottom.topAnchor, constant: -4),
+            bottom.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 16),
+            bottom.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -8),
+            bottom.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -8),
             newTabButton.heightAnchor.constraint(equalToConstant: 32),
+            newTabButton.widthAnchor.constraint(equalTo: bottom.widthAnchor),
+            downloadButton.heightAnchor.constraint(equalToConstant: 26),
+            downloadButton.widthAnchor.constraint(equalTo: bottom.widthAnchor),
             listContainer.widthAnchor.constraint(equalTo: scrollView.contentView.widthAnchor),
             listContainer.topAnchor.constraint(equalTo: scrollView.contentView.topAnchor),
             stack.topAnchor.constraint(equalTo: listContainer.topAnchor),
@@ -105,6 +120,17 @@ final class SidebarView: NSView {
     }
 
     required init?(coder: NSCoder) { fatalError() }
+
+    func showDownload(_ status: DownloadManager.Status?) {
+        guard let status else { downloadButton.isHidden = true; return }
+        downloadButton.isHidden = false
+        switch status.state {
+        case .running(let f): downloadButton.title = "↓ \(status.name)  \(Int(f * 100))%"
+        case .finished: downloadButton.title = "✓ \(status.name) — Show in Finder"
+        case .failed: downloadButton.title = "✗ \(status.name) failed"
+        }
+        downloadButton.toolTip = status.fileURL.path
+    }
 
     func setRows(_ rows: [TabRowView]) {
         stack.arrangedSubviews.forEach { $0.removeFromSuperview() }
