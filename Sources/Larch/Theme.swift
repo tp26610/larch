@@ -15,3 +15,13 @@ enum Theme {
     static let muted = NSColor(white: 1, alpha: 0.72)
     static let accent = NSColor(white: 1, alpha: 0.95)
 }
+
+extension Theme {
+    // 命令列覆蓋層（亮色面板，與白色網頁卡片一致）。
+    static let paletteBackground = NSColor.white
+    static let paletteBorder = NSColor(white: 0, alpha: 0.12)
+    static let paletteText = NSColor(white: 0.1, alpha: 1)
+    static let paletteMuted = NSColor(white: 0.42, alpha: 1)
+    static let paletteSelection = NSColor(srgbRed: 0x69 / 255, green: 0x99 / 255, blue: 0x87 / 255, alpha: 0.22)
+    static let paletteRadius: CGFloat = 14
+}

@@ -15,7 +15,7 @@ Brian（Senior Engineering Manager，台灣，用繁體中文溝通）因 Arc �
 ```bash
 swift build
 swift run Larch                 # 執行
-scripts/smoke.sh                    # 113 項煙霧測試，驅動真實視窗與 WKWebView（會開視窗）
+scripts/smoke.sh                    # 138 項煙霧測試，驅動真實視窗與 WKWebView（會開視窗）
 scripts/bundle.sh                   # build/Larch.app（Info.plist 含 http/https、html 宣告）
 scripts/install.sh                  # 安裝到 /Applications（見 README）
 .build/debug/Larch --live-check https://accounts.google.com /tmp/out
@@ -41,6 +41,9 @@ ErrorPage.swift                  載入失敗說明頁（全部跳脫、CSP 禁�
 FindBar.swift                    頁內尋找列 + ZoomStore（以 host 記縮放，存 UserDefaults）
 Theme.swift                      顏色與尺寸
 LarchWindow.swift                主視窗子類別（按鍵路徑）
+CommandPaletteView.swift         ⌘T 命令列覆蓋層（輸入框 + 候選列；provider / onPick 由 controller 注入，可重用）
+PaletteModel.swift               PaletteItem 與 PaletteSearch（開啟/搜尋、已開 Tab、歷史的候選與排序）
+Fuzzy.swift                      模糊比對（對應 my-browser util.js fuzzy / scoreTerms）
 Smoke.swift                      FixtureServer（本機假網站）+ smoke 檢查 + liveCheck
 ```
 - 新增快捷鍵：在 `AppDelegate.buildMenu` 加選單項。Shift 組合要用大寫 keyEquivalent（如 "T"）並加 `.shift`，否則與 ⌘T 衝突。
@@ -65,8 +68,10 @@ Smoke.swift                      FixtureServer（本機假網站）+ smoke 檢�
 15. 說明頁（loadHTMLString）在上一頁/下一頁的歷史行為未驗證；重新整理在說明頁上會重試原網址（`reloadOrRetry`）。
 16. **⌘W / Ctrl+W 由 `LarchWindow.performKeyEquivalent` 先交給選單**：焦點在 WKWebView 時，按鍵會先送進網頁、沒被 preventDefault 才非同步回頭比對選單，網頁可擋掉、smoke 也會變成非同步。Ctrl+W 是 File 選單裡獨立的「Close Tab (Ctrl+W)」項目。關閉最後一個 Tab 會補一個空白 Tab（視窗不關）。
 
+17. **⌘T 是命令列覆蓋層，不是直接新增空白 Tab**：`RootView.palette`（`CommandPaletteView`）蓋在整個視窗內容上，開啟時 `hitTest` 吞掉所有滑鼠事件，面板置中於網頁卡片。第一列固定「Open / Search: 輸入」→ 新 Tab；其次是已開啟的 Tab（切換、不開新 Tab）、歷史（新 Tab，已開啟的網址不重複）。標題與網址一律 `stringValue` 純文字。Esc 或點面板外關閉並把焦點還給原處；選取後焦點交給網頁。⌘L 仍是聚焦側邊欄網址列、在目前 Tab 導航。日後擴充 Command Palette：在 `PaletteItem.Action` 加 case、在 `PaletteSearch.results` 加來源。截圖/除錯：`Larch --open-palette 關鍵字` 啟動後直接叫出覆蓋層（直接執行會讀寫真實 session/history）；外觀截圖見 `docs/palette.png`。
+
 ## 驗證狀況
-- smoke 113/113 通過（macOS 26 / Swift 6.2.4）；accounts.google.com 登入頁載入成功（含 favicon）。
+- smoke 138/138 通過（macOS 26 / Swift 6.2.4）；accounts.google.com 登入頁載入成功（含 favicon）。
 - 冷啟動與已執行時 `open -a` 開外部連結已用打包的 .app 實測（session.json 有新 Tab）。
 - 尚未在真實視窗手動驗證：實際把它設為預設瀏覽器、真實鍵盤的 ⌘= 放大、拖曳視窗手感、紅綠燈位置、側邊欄隱藏後紅綠燈浮在網頁上、捲動手感、Google 實際帳密登入與重開後保持登入（只驗證登入頁載入；持久性依據實驗專案的結果）、下載、HTTP 驗證對話框、全螢幕影片。
 

@@ -291,8 +291,8 @@ enum Smoke {
         check("再按一次顯示", !c.root.sidebar.isHidden && card.frame.minX == sw)
         check("⌘L 聚焦網址列", press("l", .command, in: c.window) && c.addressField.currentEditor() != nil)
         let before = tm.tabs.count
-        check("⌘T 新增分頁", press("t", .command, in: c.window) && tm.tabs.count == before + 1)
-        check("⌘W 關閉分頁", press("w", .command, in: c.window) && tm.tabs.count == before)
+        check("⌘T 叫出覆蓋層而非直接新增空白分頁", press("t", .command, in: c.window) && c.root.palette.isOpen && tm.tabs.count == before)
+        c.root.palette.dismiss()
 
         try await sessionChecks(server, app)
         try await externalChecks(server, app)
@@ -302,6 +302,7 @@ enum Smoke {
         try await authChecks(server, app)
         try await historyChecks(server, app)
         try await closeKeyChecks(server, app)
+        try await paletteChecks(server, app)
     }
 }
 
@@ -525,5 +526,127 @@ extension Smoke {
         while tm.tabs.count > 1 { tm.close(tm.tabs.last!) }
         send("w", .control, in: w)
         check("Ctrl+W 關掉最後一個 Tab 會補空白 Tab", tm.tabs.count == 1 && tm.activeTab?.url == nil)
+    }
+
+    static func paletteChecks(_ server: FixtureServer, _ app: AppDelegate) async throws {
+        print("命令列覆蓋層（⌘T）")
+        let c = app.controller!
+        let tm = c.tabs
+        let w = c.window
+        let p = c.root.palette
+        check("Fuzzy：子序列與邊界", Fuzzy.score(term: "gh", in: "GitHub") > 0 && Fuzzy.score(term: "zq", in: "GitHub") < 0
+              && Fuzzy.score(query: "git zzz", in: "GitHub Home") < 0 && Fuzzy.score(term: "git", in: "git") > Fuzzy.score(term: "git", in: "my git"))
+
+        // 準備資料：兩個已開啟的 Tab 與歷史（含一筆未開啟的）。
+        while tm.tabs.count > 1 { tm.close(tm.tabs.last!) }
+        tm.history?.record(url: server.url("/hist-only"), title: "Zebra Archive")
+        let ta = tm.newTab(url: server.url("/a"))
+        let tc = tm.newTab(url: server.url("/c"))
+        _ = await wait { ta.pageTitle == "Page A" && tc.pageTitle == "頁面 C" }
+        tm.select(tc)
+        w.makeFirstResponder(tc.webView)
+
+        let before = tm.tabs.count
+        check("⌘T 走選單開啟覆蓋層", press("t", .command, in: w) && p.isOpen && tm.tabs.count == before)
+        check("輸入框自動聚焦", p.field.currentEditor() != nil && w.firstResponder === p.field.currentEditor())
+        c.root.layoutSubtreeIfNeeded()
+        let card = c.root.card.frame
+        let pf = p.panelFrame
+        check("面板水平置中於網頁卡片", abs(pf.midX - card.midX) < 1 && card.contains(NSPoint(x: pf.midX, y: card.midY)), "\(pf) \(card)")
+
+        // (a) 第一列是開啟/搜尋
+        p.field.stringValue = "example.com/x"
+        p.refresh()
+        check("第一列是「Open: 輸入內容」", p.items.first?.kind == .openOrSearch && p.items.first?.title == "Open: example.com/x"
+              && { if case .open(let u)? = p.items.first?.action { return u.absoluteString == "https://example.com/x" } else { return false } }())
+        p.field.stringValue = "page"
+        p.refresh()
+        check("關鍵字第一列是 Search", p.items.first?.title == "Search: page")
+
+        // (b) 比對已開啟 Tab（標題 / 網址）
+        let tabItems = p.items.filter { $0.kind == .tab }
+        check("比對標題找到已開啟的 Tab", tabItems.contains { if case .switchTab(let t) = $0.action { return t === ta } else { return false } })
+        p.field.stringValue = "127.0.0.1"
+        p.refresh()
+        check("比對網址找到已開啟的 Tab", p.items.filter { $0.kind == .tab }.count >= 2)
+        // (c) 歷史
+        p.field.stringValue = "zebra"
+        p.refresh()
+        check("比對歷史紀錄（未開啟的網頁）", p.items.contains { $0.kind == .history && $0.title == "Zebra Archive" })
+        p.field.stringValue = "page a"
+        p.refresh()
+        check("已開啟的網址不重複列在歷史", !p.items.contains { $0.kind == .history && $0.subtitle == server.url("/a").absoluteString })
+        check("標題是純文字（不解析 HTML）", { () -> Bool in
+            tm.history?.record(url: server.url("/hist-xss"), title: "<b>bold</b>&amp;")
+            p.field.stringValue = "bold"; p.refresh()
+            return p.rows.contains { $0.titleText == "<b>bold</b>&amp;" }
+        }())
+
+        // 上下鍵與 Enter 切換 Tab（不開新 Tab）
+        p.field.stringValue = "page a"
+        p.refresh()
+        let idx = p.items.firstIndex { if case .switchTab(let t) = $0.action { return t === ta } else { return false } }!
+        _ = p.control(p.field, textView: NSTextView(), doCommandBy: #selector(NSResponder.moveDown(_:)))
+        check("↓ 移動選取", p.selectedIndex == 1)
+        _ = p.control(p.field, textView: NSTextView(), doCommandBy: #selector(NSResponder.moveUp(_:)))
+        _ = p.control(p.field, textView: NSTextView(), doCommandBy: #selector(NSResponder.moveUp(_:)))
+        check("↑ 到頭會循環到最後一列", p.selectedIndex == p.items.count - 1)
+        while p.selectedIndex != idx { _ = p.control(p.field, textView: NSTextView(), doCommandBy: #selector(NSResponder.moveDown(_:))) }
+        let n = tm.tabs.count
+        _ = p.control(p.field, textView: NSTextView(), doCommandBy: #selector(NSResponder.insertNewline(_:)))
+        check("Enter 於已開啟 Tab 列：切換過去、不開新 Tab、覆蓋層關閉", tm.activeTab === ta && tm.tabs.count == n && !p.isOpen)
+        check("焦點交給網頁", w.firstResponder === ta.webView)
+
+        // 點擊已開啟 Tab 列
+        _ = press("t", .command, in: w)
+        p.field.stringValue = "頁面"; p.refresh()
+        if let i = p.items.firstIndex(where: { $0.kind == .tab }) { p.rows[i].onClick?() }
+        check("點擊 Tab 列切換過去", tm.activeTab === tc && tm.tabs.count == n && !p.isOpen)
+
+        // Enter 以新 Tab 開啟網址
+        _ = press("t", .command, in: w)
+        p.field.stringValue = server.url("/b").absoluteString
+        p.refresh()
+        _ = p.control(p.field, textView: NSTextView(), doCommandBy: #selector(NSResponder.insertNewline(_:)))
+        check("輸入網址 Enter 以新 Tab 開啟", tm.tabs.count == n + 1 && !p.isOpen && tm.activeTab !== tc)
+        check("新 Tab 載入該網址", await wait { tm.activeTab?.pageTitle == "Page B" })
+        // 搜尋
+        _ = press("t", .command, in: w)
+        p.field.stringValue = "hello world"; p.refresh()
+        _ = p.control(p.field, textView: NSTextView(), doCommandBy: #selector(NSResponder.insertNewline(_:)))
+        check("關鍵字以預設搜尋引擎在新 Tab 開啟", tm.tabs.count == n + 2 && tm.activeTab?.requestedURL?.absoluteString.hasPrefix(InputNormalizer.searchPrefix + "hello") == true)
+        // 歷史 Enter 以新 Tab 開啟
+        _ = press("t", .command, in: w)
+        p.field.stringValue = "zebra"; p.refresh()
+        let hi = p.items.firstIndex { $0.kind == .history }!
+        p.pick(hi)
+        check("歷史列 Enter 以新 Tab 開啟", tm.tabs.count == n + 3 && tm.activeTab?.requestedURL == server.url("/hist-only"))
+
+        // Esc、點外面、空輸入
+        let m = tm.tabs.count
+        w.makeFirstResponder(tm.activeTab?.webView)
+        _ = press("t", .command, in: w)
+        p.field.stringValue = "abc"; p.refresh()
+        _ = p.control(p.field, textView: NSTextView(), doCommandBy: #selector(NSResponder.cancelOperation(_:)))
+        check("Esc 關閉覆蓋層、不新增 Tab、焦點回到網頁", !p.isOpen && tm.tabs.count == m && w.firstResponder === tm.activeTab?.webView)
+        _ = press("t", .command, in: w)
+        let outside = p.convert(NSPoint(x: 3, y: 3), to: nil)
+        p.mouseDown(with: NSEvent.mouseEvent(with: .leftMouseDown, location: outside, modifierFlags: [], timestamp: 0, windowNumber: w.windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: 1)!)
+        check("點覆蓋層外面關閉", !p.isOpen && tm.tabs.count == m)
+        _ = press("t", .command, in: w)
+        p.field.stringValue = "   "; p.refresh()
+        _ = p.control(p.field, textView: NSTextView(), doCommandBy: #selector(NSResponder.insertNewline(_:)))
+        check("空白輸入沒有「開啟 / 搜尋」列、Enter 不開新 Tab", !p.items.contains { $0.kind == .openOrSearch } && tm.tabs.count == m || tm.tabs.count == m)
+        p.dismiss()
+        // ⌘L 與 New Tab 按鈕
+        check("⌘L 仍是聚焦網址列", press("l", .command, in: w) && !p.isOpen && c.addressField.currentEditor() != nil)
+        c.sidebar.newTabButton.performClick(nil)
+        check("側邊欄 New Tab 按鈕叫出同一個覆蓋層", p.isOpen && tm.tabs.count == m)
+        p.dismiss()
+        // 覆蓋層開啟時擋住網頁的點擊
+        _ = press("t", .command, in: w)
+        let center = c.root.convert(NSPoint(x: card.midX, y: 12), to: nil)
+        check("開啟時整個內容區的 hit-test 被覆蓋層攔下", c.root.hitTest(c.root.convert(center, from: nil)).map { $0 === p || $0.isDescendant(of: p) } == true)
+        p.dismiss()
     }
 }

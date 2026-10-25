@@ -17,10 +17,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         controller = BrowserWindowController(dataStore: store, storage: storage, downloads: DownloadManager(directory: smoke ? storage.directory.appendingPathComponent("Downloads") : FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask)[0]), zoom: ZoomStore(defaults: smoke ? (UserDefaults(suiteName: "larch-smoke-\(getpid())") ?? .standard) : .standard), autosave: !smoke)
         NSApp.activate(ignoringOtherApps: true)
         // 命令列給的網址在新分頁開啟（open -a ... --args URL）。
-        for arg in CommandLine.arguments.dropFirst() {
+        let paletteFlag = CommandLine.arguments.firstIndex(of: "--open-palette")
+        for (i, arg) in CommandLine.arguments.enumerated().dropFirst() where !arg.hasPrefix("--") && i != paletteFlag.map({ $0 + 1 }) {
             if let input = InputNormalizer.normalize(arg), input.kind == .url { controller.tabs.newTab(url: input.url) }
         }
         if !pendingURLs.isEmpty { controller.openExternal(pendingURLs); pendingURLs = [] }
+        // 除錯／截圖用：啟動後直接叫出命令列覆蓋層並預填輸入。
+        if let i = CommandLine.arguments.firstIndex(of: "--open-palette") {
+            controller.openPalette(prefill: i + 1 < CommandLine.arguments.count ? CommandLine.arguments[i + 1] : "")
+        }
         if let i = CommandLine.arguments.firstIndex(of: "--live-check"), i + 2 < CommandLine.arguments.count {
             let url = CommandLine.arguments[i + 1], out = CommandLine.arguments[i + 2]
             Task { @MainActor in await Smoke.liveCheck(self, url: url, outPrefix: out) }
@@ -56,7 +61,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     // MARK: 選單（快捷鍵全部走選單，避免與網頁內容搶按鍵）
 
-    @objc func newTab() { controller.newTab() }
+    @objc func newTab() { controller.showPalette() }
     @objc func closeTab() { controller.closeCurrentTab() }
     @objc func restoreTab() { controller.restoreTab() }
     @objc func focusAddress() { controller.focusAddress() }

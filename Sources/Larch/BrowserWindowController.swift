@@ -48,10 +48,16 @@ final class BrowserWindowController: NSObject, NSTextFieldDelegate, NSWindowDele
         sidebar.reloadButton.target = self
         sidebar.reloadButton.action = #selector(reload)
         sidebar.newTabButton.target = self
-        sidebar.newTabButton.action = #selector(newTab)
+        sidebar.newTabButton.action = #selector(showPalette)
 
         sidebar.downloadButton.target = self
         sidebar.downloadButton.action = #selector(downloadClicked)
+        root.palette.provider = { [weak self] q in
+            guard let self else { return [] }
+            return PaletteSearch.results(for: q, tabs: self.tabs.tabs, history: self.tabs.history)
+        }
+        root.palette.onPick = { [weak self] item in self?.pick(item) }
+        root.palette.onDismiss = { [weak self] in self?.paletteDismissed() }
         tabs.downloads.onChange = { [weak self] in self?.sidebar.showDownload($0) }
         tabs.onStructureChange = { [weak self] in self?.rebuildRows() }
         tabs.onActiveChange = { [weak self] in self?.activeChanged() }
@@ -209,6 +215,42 @@ final class BrowserWindowController: NSObject, NSTextFieldDelegate, NSWindowDele
 
     @objc func newTab() {
         tabs.newTab()
+    }
+
+    // MARK: 命令列覆蓋層
+
+    private weak var paletteReturnFocus: NSResponder?
+
+    /// ⌘T / New Tab 按鈕：叫出搜尋 + 開新 Tab 的覆蓋層（已開啟時重新全選輸入）。
+    @objc func showPalette() { openPalette(prefill: nil) }
+
+    func openPalette(prefill: String?) {
+        if !root.palette.isOpen {
+            let r = window.firstResponder
+            paletteReturnFocus = (r as? NSTextView)?.delegate as? NSResponder ?? r
+        }
+        root.palette.present()
+        if let prefill, !prefill.isEmpty {
+            root.palette.field.stringValue = prefill
+            root.palette.field.currentEditor()?.selectedRange = NSRange(location: (prefill as NSString).length, length: 0)
+            root.palette.refresh()
+        }
+    }
+
+    private func pick(_ item: PaletteItem) {
+        switch item.action {
+        case .open(let url): tabs.newTab(url: url)
+        case .switchTab(let tab): tabs.select(tab)
+        }
+        window.makeFirstResponder(tabs.activeTab?.webView)
+    }
+
+    /// 取消時把焦點還給原本的位置；選取後由 pick 把焦點交給網頁。
+    private func paletteDismissed() {
+        if let r = paletteReturnFocus, window.firstResponder === root.palette.field.currentEditor() || window.firstResponder === window {
+            window.makeFirstResponder(r)
+        }
+        if window.firstResponder === window || window.firstResponder == nil { window.makeFirstResponder(tabs.activeTab?.webView) }
     }
 
     @objc func closeCurrentTab() {
