@@ -30,3 +30,14 @@ extension Theme {
     // 載入進度條：亮色卡片上要看得清楚，比 panel 深的綠。
     static let progress = NSColor(srgbRed: 0x1F / 255, green: 0x7A / 255, blue: 0x5C / 255, alpha: 1)
 }
+
+extension Theme {
+    // Little 視窗：白色色調，與主視窗的鼠尾草綠一眼區分（仿 Arc 的 Little Arc）。
+    static let littleFrame = NSColor(srgbRed: 0xF5 / 255, green: 0xF5 / 255, blue: 0xF3 / 255, alpha: 1)
+    static let littleBorder = NSColor(white: 0, alpha: 0.18)
+    static let littleToolbarText = NSColor(white: 0.16, alpha: 1)
+    static let littleMuted = NSColor(white: 0.42, alpha: 1)
+    static let littleIcon = NSColor(white: 0.32, alpha: 1)
+    static let littlePill = NSColor(white: 0, alpha: 0.07)
+    static let littleButton = NSColor(white: 0, alpha: 0.08)
+}

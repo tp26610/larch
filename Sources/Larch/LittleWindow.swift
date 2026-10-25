@@ -31,7 +31,7 @@ final class LittleWindow: LarchWindow {
     }
 }
 
-/// Little 視窗內容：上方 44px 工具列（在鼠尾草綠外框上）+ 圓角網頁卡片。工具列空白處可拖曳視窗。
+/// Little 視窗內容：上方 44px 工具列（淺白外框，與主視窗的綠色區分）+ 圓角網頁卡片。工具列空白處可拖曳視窗。
 @MainActor
 final class LittleRootView: NSView {
     static let toolbarHeight: CGFloat = 44
@@ -40,35 +40,42 @@ final class LittleRootView: NSView {
     let backButton = LittleRootView.iconButton("chevron.left", "Back (⌘[)")
     let forwardButton = LittleRootView.iconButton("chevron.right", "Forward (⌘])")
     let reloadButton = LittleRootView.iconButton("arrow.clockwise", "Reload (⌘R)")
-    let titleLabel = NSTextField(labelWithString: "")
+    /// 中央的網址膠囊：只顯示網域（純文字）；完整標題與網址放在 toolTip。
+    let pill = NSView()
     let urlLabel = NSTextField(labelWithString: "")
     let addButton = NSButton()
     private let toolbar = FlippedView()
 
     override var mouseDownCanMoveWindow: Bool { true }
     var toolbarHeightForTest: CGFloat { toolbar.frame.height }
+    var pillText: String { urlLabel.stringValue }
+    var pillToolTip: String { pill.toolTip ?? "" }
 
     init() {
         super.init(frame: .zero)
         wantsLayer = true
-        layer?.backgroundColor = Theme.panel.cgColor
-        titleLabel.font = .systemFont(ofSize: 13, weight: .semibold)
-        titleLabel.textColor = Theme.text
-        urlLabel.font = .systemFont(ofSize: 11)
-        urlLabel.textColor = Theme.muted
-        for l in [titleLabel, urlLabel] {
-            l.lineBreakMode = .byTruncatingMiddle
-            l.cell?.usesSingleLineMode = true
-        }
-        addButton.title = "Add to Tabs"
+        layer?.backgroundColor = Theme.littleFrame.cgColor
+        layer?.borderWidth = 1
+        layer?.borderColor = Theme.littleBorder.cgColor
+        pill.wantsLayer = true
+        pill.layer?.backgroundColor = Theme.littlePill.cgColor
+        pill.layer?.cornerRadius = 8
+        urlLabel.font = .systemFont(ofSize: 13)
+        urlLabel.textColor = Theme.littleToolbarText
+        urlLabel.alignment = .center
+        urlLabel.lineBreakMode = .byTruncatingMiddle
+        urlLabel.cell?.usesSingleLineMode = true
+        pill.addSubview(urlLabel)
         addButton.isBordered = false
         addButton.wantsLayer = true
-        addButton.layer?.backgroundColor = NSColor(white: 1, alpha: 0.95).cgColor
+        addButton.layer?.backgroundColor = Theme.littleButton.cgColor
         addButton.layer?.cornerRadius = 7
-        addButton.attributedTitle = NSAttributedString(string: "Add to Tabs", attributes: [
-            .font: NSFont.systemFont(ofSize: 12, weight: .semibold), .foregroundColor: Theme.progress])
+        let t = NSMutableAttributedString(string: "Add to Tabs", attributes: [
+            .font: NSFont.systemFont(ofSize: 12, weight: .semibold), .foregroundColor: Theme.littleToolbarText])
+        t.append(NSAttributedString(string: "  ⌘O", attributes: [.font: NSFont.systemFont(ofSize: 11), .foregroundColor: Theme.littleMuted]))
+        addButton.attributedTitle = t
         addButton.toolTip = "Add to Tabs (⌘O / ⌘↩)"
-        for v in [backButton, forwardButton, reloadButton, titleLabel, urlLabel, addButton] { toolbar.addSubview(v) }
+        for v in [backButton, forwardButton, reloadButton, pill, addButton] { toolbar.addSubview(v) }
         addSubview(toolbar)
         addSubview(card)
     }
@@ -85,12 +92,12 @@ final class LittleRootView: NSView {
             b.frame = NSRect(x: x, y: (h - 28) / 2, width: 30, height: 28)
             x += 32
         }
-        let addW: CGFloat = 104
+        let addW: CGFloat = 124
         addButton.frame = NSRect(x: bounds.width - addW - 12, y: (h - 28) / 2, width: addW, height: 28)
-        let tx = x + 12
-        let tw = max(40, addButton.frame.minX - 12 - tx)
-        titleLabel.frame = NSRect(x: tx, y: 6, width: tw, height: 17)
-        urlLabel.frame = NSRect(x: tx, y: 23, width: tw, height: 15)
+        // 膠囊置中於視窗，但不壓到左右的按鈕。
+        let maxW = max(60, min(440, 2 * (min(bounds.midX - x - 12, addButton.frame.minX - bounds.midX - 12))))
+        pill.frame = NSRect(x: bounds.midX - maxW / 2, y: (h - 28) / 2, width: maxW, height: 28)
+        urlLabel.frame = NSRect(x: 10, y: (28 - 17) / 2, width: maxW - 20, height: 17)
     }
 
     /// 載入中重新整理鈕換成停止。
@@ -103,7 +110,7 @@ final class LittleRootView: NSView {
         let b = NSButton()
         b.image = NSImage(systemSymbolName: symbol, accessibilityDescription: label)
         b.isBordered = false
-        b.contentTintColor = Theme.muted
+        b.contentTintColor = Theme.littleIcon
         b.toolTip = label
         return b
     }
@@ -136,7 +143,7 @@ final class LittleWindowController: NSObject, NSWindowDelegate {
         window.titleVisibility = .hidden
         window.isMovableByWindowBackground = true
         window.appearance = NSAppearance(named: .aqua)
-        window.backgroundColor = Theme.panel
+        window.backgroundColor = Theme.littleFrame
         window.minSize = NSSize(width: 520, height: 360)
         window.contentView = root
         window.delegate = self
@@ -169,8 +176,9 @@ final class LittleWindowController: NSObject, NSWindowDelegate {
     var isClosed: Bool { closed }
 
     private func sync() {
-        root.titleLabel.stringValue = tab.displayTitle
-        root.urlLabel.stringValue = tab.displayURL?.absoluteString ?? ""
+        let url = tab.displayURL
+        root.urlLabel.stringValue = url?.host ?? url?.absoluteString ?? ""
+        root.pill.toolTip = [tab.displayTitle, url?.absoluteString ?? ""].filter { !$0.isEmpty }.joined(separator: "\n")
         root.backButton.isEnabled = tab.webView.canGoBack
         root.forwardButton.isEnabled = tab.webView.canGoForward
         root.setLoading(tab.isLoading)

@@ -1290,10 +1290,10 @@ extension Smoke {
         let l1 = c.openLittle(server.url("/b"))!
         check("開出 Little：不進主視窗 Tab 清單、視窗可見", c.littles.count == 1 && !tm.tabs.contains { $0 === l1.tab } && l1.window.isVisible)
         check("同網址 300ms 內重複開啟被忽略", c.openLittle(server.url("/b")) == nil && c.littles.count == 1)
-        check("Little 載入頁面並顯示純文字標題與網址", await wait { l1.tab.pageTitle == "Page B" && l1.root.titleLabel.stringValue == "Page B" && l1.root.urlLabel.stringValue == server.url("/b").absoluteString })
+        check("Little 網址膠囊顯示網域（純文字），標題與完整網址在提示", await wait { l1.tab.pageTitle == "Page B" && l1.root.pillText == "127.0.0.1" && l1.root.pillToolTip == "Page B\n" + server.url("/b").absoluteString })
         check("Little 的瀏覽寫進歷史", c.tabs.history?.entries.contains { $0.url == server.url("/b").absoluteString } == true)
         check("焦點交給網頁", l1.window.firstResponder === l1.tab.webView)
-        check("視窗為 Larch 外框風格（鼠尾草綠底、卡片、紅綠燈）", l1.window.backgroundColor == Theme.panel && l1.root.card.superview === l1.root && !l1.window.styleMask.isEmpty)
+        check("Little 為白色色調（與主視窗的綠色區分）、卡片在外框內", l1.window.backgroundColor == Theme.littleFrame && l1.window.backgroundColor != Theme.panel && c.window.backgroundColor == Theme.panel && l1.root.card.superview === l1.root && !l1.window.styleMask.isEmpty)
 
         // 版面與拖曳區域
         l1.root.layoutSubtreeIfNeeded()
@@ -1397,7 +1397,7 @@ extension Smoke {
         check("Little 內 target=_blank 就地開啟（不新增 Tab 或 Little）", await wait { lp.tab.pageTitle == "Page B" } && tm.tabs.count == tabsBefore && c.littles.count == 1)
         lp.close()
         let lx = c.openLittle(server.url("/xss"))!
-        check("Little 標題當純文字", await wait { lx.root.titleLabel.stringValue.hasPrefix("<img") })
+        check("Little 標題當純文字（提示文字原樣）", await wait { lx.root.pillToolTip.hasPrefix("<img") })
         lx.close()
         let tmp = try FixtureServer()
         await tmp.start()
