@@ -20,6 +20,10 @@ final class Tab: NSObject, WKNavigationDelegate, WKUIDelegate {
     var zoomStore: ZoomStore?
     /// 釘選的 Tab 對應的 PinNode.id；nil 代表一般 Tab。
     var pinID: UUID?
+    /// Option+點連結：取消原本的導覽，交給 Little 視窗開啟。
+    var onOptionClick: ((URL) -> Void)?
+    /// window.open / target=_blank 在同一個 view 就地開啟（Little 視窗用）。
+    var popupInPlace = false
     /// 最近一次被選中的時間（命令列排序用）。
     var lastActiveAt = Date()
 
@@ -113,6 +117,14 @@ final class Tab: NSObject, WKNavigationDelegate, WKUIDelegate {
         if navigationAction.targetFrame?.isMainFrame ?? true, InputNormalizer.isHTTP(navigationAction.request.url) {
             errorURL = nil
         }
+        // Option+點連結 → Little（⌘+點、一般點擊、彈出視窗與登入流程不受影響）。
+        let mods = navigationAction.modifierFlags
+        if navigationAction.navigationType == .linkActivated, mods.contains(.option), !mods.contains(.command),
+           let url = navigationAction.request.url, InputNormalizer.isHTTP(url), let onOptionClick {
+            decisionHandler(.cancel)
+            onOptionClick(url)
+            return
+        }
         if navigationAction.shouldPerformDownload {
             decisionHandler(.download)
             return
@@ -176,6 +188,10 @@ final class Tab: NSObject, WKNavigationDelegate, WKUIDelegate {
                  for navigationAction: WKNavigationAction, windowFeatures: WKWindowFeatures) -> WKWebView? {
         let url = navigationAction.request.url
         guard url == nil || InputNormalizer.isHTTP(url) || url?.scheme == "about" else { return nil }
+        if popupInPlace {
+            if let url, InputNormalizer.isHTTP(url) { load(url) }
+            return nil
+        }
         return onPopup?(configuration, self)?.webView
     }
 

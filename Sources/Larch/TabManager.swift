@@ -41,21 +41,49 @@ final class TabManager {
     @discardableResult
     func newTab(url: URL? = nil, customTitle: String? = nil, activate: Bool = true,
                 popupConfiguration: WKWebViewConfiguration? = nil, after opener: Tab? = nil, pinID: UUID? = nil) -> Tab {
-        let tab = Tab(configuration: popupConfiguration ?? configuration)
+        let tab = makeTab(configuration: popupConfiguration)
         tab.pinID = pinID
         tab.customTitle = customTitle
-        tab.downloads = downloads
-        tab.zoomStore = zoom
-        tab.onVisit = { [weak self] url, title in self?.history?.record(url: url, title: title) }
-        tab.onChange = { [weak self] in self?.onTabChange?($0) }
-        tab.onPopup = { [weak self] config, opener in self?.newTab(popupConfiguration: config, after: opener) }
-        tab.onRequestClose = { [weak self] tab in self?.close(tab) }
+        attach(tab)
         if let opener, let i = tabs.firstIndex(where: { $0 === opener }) { tabs.insert(tab, at: i + 1) } else { tabs.append(tab) }
         onStructureChange?()
         if let url { tab.load(url) }
         if activate || activeTab == nil { select(tab) }
         return tab
     }
+
+    /// 建立 Tab 但不放進清單（Little 視窗用）：共用 data store、下載、縮放，瀏覽會寫入歷史。
+    func makeTab(configuration: WKWebViewConfiguration? = nil) -> Tab {
+        let tab = Tab(configuration: configuration ?? self.configuration)
+        tab.downloads = downloads
+        tab.zoomStore = zoom
+        tab.onVisit = { [weak self] url, title in self?.history?.record(url: url, title: title) }
+        tab.onOptionClick = { [weak self] url in self?.onOpenLittle?(url) }
+        return tab
+    }
+
+    /// 接上「屬於主視窗清單」的回呼。
+    private func attach(_ tab: Tab) {
+        tab.popupInPlace = false
+        tab.onChange = { [weak self] in self?.onTabChange?($0) }
+        tab.onPopup = { [weak self] config, opener in self?.newTab(popupConfiguration: config, after: opener) }
+        tab.onRequestClose = { [weak self] tab in self?.close(tab) }
+        tab.onOptionClick = { [weak self] url in self?.onOpenLittle?(url) }
+    }
+
+    /// 把別處（Little 視窗）的 Tab 原封不動收進清單：同一個 WKWebView，不重新載入；插在目前 Tab 之後並選中。
+    @discardableResult
+    func adopt(_ tab: Tab) -> Tab {
+        tab.webView.removeFromSuperview()
+        attach(tab)
+        if let active = activeTab, let i = tabs.firstIndex(where: { $0 === active }) { tabs.insert(tab, at: i + 1) } else { tabs.append(tab) }
+        onStructureChange?()
+        select(tab)
+        return tab
+    }
+
+    /// Option+點連結要開 Little 視窗（由 controller 接）。
+    var onOpenLittle: ((URL) -> Void)?
 
     func select(_ tab: Tab) {
         guard tabs.contains(where: { $0 === tab }), activeTab !== tab else { return }

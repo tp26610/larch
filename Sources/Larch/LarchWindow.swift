@@ -1,7 +1,7 @@
 import AppKit
 
 /// 主視窗。標題列隱藏且以 isMovableByWindowBackground 拖曳，系統不會處理這些區域的雙擊，這裡補上。
-final class LarchWindow: NSWindow {
+class LarchWindow: NSWindow {
     /// 依系統設定（AppleActionOnDoubleClick）決定雙擊 bar 的行為。
     enum DoubleClickAction { case zoom, minimize, none }
 

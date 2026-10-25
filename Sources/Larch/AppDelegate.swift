@@ -19,12 +19,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let store: WKWebsiteDataStore = smoke ? .nonPersistent() : .default()
         let storage = smoke ? Storage(directory: FileManager.default.temporaryDirectory.appendingPathComponent("larch-smoke-\(getpid())"))
                             : .standard
-        controller = BrowserWindowController(dataStore: store, storage: storage, downloads: DownloadManager(directory: smoke ? storage.directory.appendingPathComponent("Downloads") : FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask)[0]), zoom: ZoomStore(defaults: smoke ? (UserDefaults(suiteName: "larch-smoke-\(getpid())") ?? .standard) : .standard), autosave: !smoke)
+        controller = BrowserWindowController(dataStore: store, storage: storage, downloads: DownloadManager(directory: smoke ? storage.directory.appendingPathComponent("Downloads") : FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask)[0]), zoom: ZoomStore(defaults: smoke ? (UserDefaults(suiteName: "larch-smoke-\(getpid())") ?? .standard) : .standard), prefs: Preferences(defaults: smoke ? (UserDefaults(suiteName: "larch-smoke-\(getpid())") ?? .standard) : .standard), autosave: !smoke)
         NSApp.activate(ignoringOtherApps: true)
         // 命令列給的網址在新分頁開啟（open -a ... --args URL）。
         let paletteFlag = CommandLine.arguments.firstIndex(of: "--open-palette")
         for (i, arg) in CommandLine.arguments.enumerated().dropFirst() where !arg.hasPrefix("--") && i != paletteFlag.map({ $0 + 1 }) {
-            if let input = InputNormalizer.normalize(arg), input.kind == .url { controller.tabs.newTab(url: input.url) }
+            if let input = InputNormalizer.normalize(arg), input.kind == .url { controller.openInNewTab(input.url) }
         }
         if !pendingURLs.isEmpty { controller.openExternal(pendingURLs); pendingURLs = [] }
         // 除錯／截圖用：啟動後直接叫出命令列覆蓋層並預填輸入。
@@ -71,6 +71,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc func closeTab() { controller.closeCurrentTab() }
     @objc func duplicateTab() { controller.duplicateTab() }
     @objc func copyURLAsMarkdown() { controller.copyURLAsMarkdown() }
+    @objc func toggleExternalLittle() { controller.prefs.externalLinksInLittle.toggle() }
+
+    func validateMenuItem(_ item: NSMenuItem) -> Bool {
+        if item.action == #selector(toggleExternalLittle) { item.state = controller?.prefs.externalLinksInLittle == true ? .on : .off }
+        return true
+    }
+
     @objc func togglePin() { controller.togglePinAction() }
     @objc func newFolder() { controller.newFolderAction() }
     @objc func restoreTab() { controller.restoreTab() }
@@ -120,6 +127,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             item("Pin / Unpin Tab", #selector(togglePin), "d", target: me),
             item("New Folder", #selector(newFolder), "N", [.command, .shift], target: me),
             item("Restore Closed Tab", #selector(restoreTab), "T", [.command, .shift], target: me),
+            .separator(),
+            item("Open External Links in Little Window", #selector(toggleExternalLittle), target: me),
         ])
         add("Edit", [
             item("Undo", Selector(("undo:")), "z"),

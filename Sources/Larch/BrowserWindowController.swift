@@ -9,13 +9,15 @@ final class BrowserWindowController: NSObject, NSTextFieldDelegate, NSWindowDele
     let tabs: TabManager
     private var rows: [UUID: TabRowView] = [:]
     let storage: Storage
+    let prefs: Preferences
     private let sessionSaver = Debouncer()
     private var restoring = false
 
     var sidebar: SidebarView { root.sidebar }
     var addressField: NSTextField { root.sidebar.addressBar.field }
 
-    init(dataStore: WKWebsiteDataStore, storage: Storage, downloads: DownloadManager? = nil, zoom: ZoomStore? = nil, autosave: Bool) {
+    init(dataStore: WKWebsiteDataStore, storage: Storage, downloads: DownloadManager? = nil, zoom: ZoomStore? = nil, prefs: Preferences = Preferences(), autosave: Bool) {
+        self.prefs = prefs
         self.storage = storage
         tabs = TabManager(dataStore: dataStore, downloads: downloads, zoom: zoom, history: HistoryStore(storage: storage), pins: PinStore(storage: storage))
         window = LarchWindow(contentRect: NSRect(x: 0, y: 0, width: 1280, height: 820),
@@ -61,6 +63,7 @@ final class BrowserWindowController: NSObject, NSTextFieldDelegate, NSWindowDele
         root.palette.onPick = { [weak self] item in self?.pick(item) }
         root.palette.onDismiss = { [weak self] in self?.paletteDismissed() }
         tabs.downloads.onChange = { [weak self] in self?.sidebar.showDownload($0) }
+        tabs.onOpenLittle = { [weak self] in self?.openLittle($0) }
         tabs.onStructureChange = { [weak self] in self?.rebuildRows() }
         tabs.pins.onChange = { [weak self] in self?.rebuildRows() }
         sidebar.onResolveDrop = { [weak self] dragged, over, f in self?.resolveDrop(dragged, over: over, fraction: f) }
@@ -119,6 +122,7 @@ final class BrowserWindowController: NSObject, NSTextFieldDelegate, NSWindowDele
 
     /// 結束前把尚未寫出的狀態存檔。
     func flushPersistence() {
+        closeAllLittles()
         sessionSaver.flush { saveSession() }
         tabs.history?.flush()
         tabs.pins.flush()
@@ -565,16 +569,58 @@ final class BrowserWindowController: NSObject, NSTextFieldDelegate, NSWindowDele
         if let tab = tabs.activeTab { tabs.close(tab) }
     }
 
-    /// 外部要求開啟（預設瀏覽器的連結、.html 檔）：一律新開 Tab，不取代現有分頁。
+    /// 外部要求開啟（預設瀏覽器的連結、.html 檔）。http(s) 連結依設定在 Little 視窗開啟（預設）或新 Tab；
+    /// 都不取代現有分頁。.html 檔一律新 Tab。若目前只有一個全新的空白 Tab（冷啟動），就直接用它，不多開空白 Tab。
     func openExternal(_ urls: [URL]) {
         for url in urls {
             if InputNormalizer.isHTTP(url) {
-                tabs.newTab(url: url)
+                if prefs.externalLinksInLittle { openLittle(url) } else { openInNewTab(url) }
             } else if url.isFileURL, ["html", "htm"].contains(url.pathExtension.lowercased()) {
-                tabs.newTab().loadFile(url)
+                (pristineBlankTab() ?? tabs.newTab()).loadFile(url)
             }
         }
-        window.makeKeyAndOrderFront(nil)
+        if littles.isEmpty { window.makeKeyAndOrderFront(nil) }
+    }
+
+    /// 新 Tab 開網址；若只有一個全新的空白 Tab 則重用它。
+    @discardableResult
+    func openInNewTab(_ url: URL) -> Tab {
+        if let blank = pristineBlankTab() { blank.load(url); return blank }
+        return tabs.newTab(url: url)
+    }
+
+    /// 唯一的 Tab 且從未載入任何網址（剛啟動的空白 Tab）。
+    private func pristineBlankTab() -> Tab? {
+        guard tabs.tabs.count == 1, let t = tabs.tabs.first, t.pinID == nil, t.displayURL == nil, t.customTitle == nil else { return nil }
+        return t
+    }
+
+    // MARK: Little 視窗
+
+    private(set) var littles: [LittleWindowController] = []
+    private var lastLittle: (url: URL, at: Date)?
+
+    /// 開 Little 視窗（可同時多個）。只接受 http(s)；同一個網址 300ms 內重複開啟忽略。
+    @discardableResult
+    func openLittle(_ url: URL) -> LittleWindowController? {
+        guard InputNormalizer.isHTTP(url) else { return nil }
+        if let last = lastLittle, last.url == url, Date().timeIntervalSince(last.at) < 0.3 { return nil }
+        lastLittle = (url, Date())
+        let tab = tabs.makeTab()
+        let little = LittleWindowController(tab: tab, prefs: prefs, near: window.isVisible ? window.frame : nil, cascade: littles.count)
+        little.onAddToTabs = { [weak self] tab in
+            guard let self else { return }
+            self.tabs.adopt(tab)
+            self.window.makeKeyAndOrderFront(nil)
+        }
+        little.onClosed = { [weak self] l in self?.littles.removeAll { $0 === l } }
+        littles.append(little)
+        tab.load(url)
+        return little
+    }
+
+    func closeAllLittles() {
+        for l in littles { l.close() }
     }
 
     @objc func restoreTab() {

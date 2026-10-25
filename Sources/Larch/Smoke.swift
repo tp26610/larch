@@ -310,6 +310,7 @@ enum Smoke {
         try await authChecks(server, app)
         try await historyChecks(server, app)
         try await closeKeyChecks(server, app)
+        try await littleChecks(server, app)
         try await paletteChecks(server, app)
         try await doubleClickChecks(server, app)
         try await trafficLightChecks(server, app)
@@ -360,8 +361,9 @@ extension Smoke {
 
 extension Smoke {
     static func externalChecks(_ server: FixtureServer, _ app: AppDelegate) async throws {
-        print("外部開啟")
+        print("外部開啟（設定為新 Tab）")
         let c = app.controller!
+        c.prefs.externalLinksInLittle = false
         let before = c.tabs.tabs.count
         let current = c.tabs.activeTab
         app.application(NSApp, open: [server.url("/b")])
@@ -375,6 +377,7 @@ extension Smoke {
         check("本機 .html 可開，mailto 忽略", await wait { c.tabs.activeTab?.pageTitle == "本機檔案" } && c.tabs.tabs.count == before + 2)
         c.submitAddress(file.absoluteString)
         check("網址列仍拒絕 file:", c.tabs.activeTab?.pageTitle == "本機檔案")
+        c.prefs.externalLinksInLittle = true
     }
 }
 
@@ -1231,5 +1234,197 @@ extension Smoke {
         c.root.palette.enterActions()
         await save("palette-actions.png")
         c.root.palette.dismiss()
+    }
+}
+
+final class FakeNavAction: WKNavigationAction {
+    private let req: URLRequest, type: WKNavigationType, mods: NSEvent.ModifierFlags
+    init(_ url: URL, type: WKNavigationType = .linkActivated, mods: NSEvent.ModifierFlags = []) {
+        req = URLRequest(url: url); self.type = type; self.mods = mods
+        super.init()
+    }
+    override var request: URLRequest { req }
+    override var navigationType: WKNavigationType { type }
+    override var modifierFlags: NSEvent.ModifierFlags { mods }
+    override var targetFrame: WKFrameInfo? { nil }
+    override var shouldPerformDownload: Bool { false }
+}
+
+extension Smoke {
+    static func escEvent(in w: NSWindow) -> NSEvent {
+        NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0, windowNumber: w.windowNumber, context: nil,
+                         characters: "\u{1b}", charactersIgnoringModifiers: "\u{1b}", isARepeat: false, keyCode: 53)!
+    }
+
+    static func returnEvent(_ mods: NSEvent.ModifierFlags, in w: NSWindow) -> NSEvent {
+        NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: mods, timestamp: 0, windowNumber: w.windowNumber, context: nil,
+                         characters: "\r", charactersIgnoringModifiers: "\r", isARepeat: false, keyCode: 36)!
+    }
+
+    static func littleChecks(_ server: FixtureServer, _ app: AppDelegate) async throws {
+        print("Little 視窗")
+        let suite = "larch-little-\(getpid())"
+        let d = UserDefaults(suiteName: suite)!
+        d.removePersistentDomain(forName: suite)
+        check("外部連結走 Little 預設開啟、大小預設 960x720", Preferences(defaults: d).externalLinksInLittle && Preferences(defaults: d).littleSize == NSSize(width: 960, height: 720))
+        Preferences(defaults: d).externalLinksInLittle = false
+        Preferences(defaults: d).littleSize = NSSize(width: 700, height: 500)
+        check("設定持久化（重新建立 Preferences 仍讀到）", !Preferences(defaults: UserDefaults(suiteName: suite)!).externalLinksInLittle
+              && Preferences(defaults: UserDefaults(suiteName: suite)!).littleSize == NSSize(width: 700, height: 500))
+        d.removePersistentDomain(forName: suite)
+
+        let c = BrowserWindowController(dataStore: .nonPersistent(), storage: tempStorage("little"), prefs: Preferences(defaults: d), autosave: false)
+        let tm = c.tabs
+        let base = tm.newTab(url: server.url("/a"))
+        _ = await wait { base.pageTitle == "Page A" }
+        let closedBefore = tm.closedStack.count
+
+        // 開啟、限流、拒絕非 http(s)
+        check("非 http(s) 不開", c.openLittle(URL(string: "file:///etc/hosts")!) == nil && c.openLittle(URL(string: "mailto:a@b.c")!) == nil && c.littles.isEmpty)
+        let l1 = c.openLittle(server.url("/b"))!
+        check("開出 Little：不進主視窗 Tab 清單、視窗可見", c.littles.count == 1 && !tm.tabs.contains { $0 === l1.tab } && l1.window.isVisible)
+        check("同網址 300ms 內重複開啟被忽略", c.openLittle(server.url("/b")) == nil && c.littles.count == 1)
+        check("Little 載入頁面並顯示純文字標題與網址", await wait { l1.tab.pageTitle == "Page B" && l1.root.titleLabel.stringValue == "Page B" && l1.root.urlLabel.stringValue == server.url("/b").absoluteString })
+        check("Little 的瀏覽寫進歷史", c.tabs.history?.entries.contains { $0.url == server.url("/b").absoluteString } == true)
+        check("焦點交給網頁", l1.window.firstResponder === l1.tab.webView)
+        check("視窗為 Larch 外框風格（鼠尾草綠底、卡片、紅綠燈）", l1.window.backgroundColor == Theme.panel && l1.root.card.superview === l1.root && !l1.window.styleMask.isEmpty)
+
+        // 版面與拖曳區域
+        l1.root.layoutSubtreeIfNeeded()
+        let bar = l1.root.convert(NSPoint(x: l1.root.bounds.midX, y: l1.root.bounds.height - 4), to: nil)
+        let cardPt = l1.root.convert(NSPoint(x: l1.root.card.frame.midX, y: l1.root.card.frame.midY), to: nil)
+        let btn = l1.root.backButton.convert(NSPoint(x: 5, y: 5), to: nil)
+        check("工具列空白處可拖曳／雙擊；網頁卡片與按鈕不可", l1.window.isDraggableBar(at: bar) && !l1.window.isDraggableBar(at: cardPt) && !l1.window.isDraggableBar(at: btn))
+        check("工具列高度 44、頁面在卡片內", l1.root.toolbarHeightForTest == 44 && l1.root.card.frame.maxY <= l1.root.bounds.height - 44 + 0.5)
+
+        // 多個 Little
+        let l2 = c.openLittle(server.url("/c"))!
+        check("可同時開多個 Little", c.littles.count == 2 && l1.window !== l2.window)
+        // Esc / ⌘W / Ctrl+W 在網頁焦點下也能關
+        check("Esc 關閉（網頁取得焦點）", l2.window.firstResponder === l2.tab.webView && l2.window.performKeyEquivalent(with: escEvent(in: l2.window)) && l2.isClosed && c.littles.count == 1)
+        check("關閉後 WKWebView 被清理、不進還原堆疊", l2.tab.webView.navigationDelegate == nil && tm.closedStack.count == closedBefore)
+        check("⌘W 關閉", l1.window.performKeyEquivalent(with: keyEvent("w", .command, in: l1.window)) && l1.isClosed && c.littles.isEmpty)
+        let l3 = c.openLittle(server.url("/a?l3"))!
+        check("Ctrl+W 關閉", l3.window.performKeyEquivalent(with: keyEvent("w", .control, in: l3.window)) && l3.isClosed)
+        check("Little 內按 ⌘T / Ctrl+S 不會動到主視窗", { () -> Bool in
+            let l = c.openLittle(server.url("/a?l4"))!
+            let before = tm.tabs.count
+            let handled = l.window.performKeyEquivalent(with: keyEvent("t", .command, in: l.window)) && l.window.performKeyEquivalent(with: keyEvent("s", .control, in: l.window))
+            let ok = handled && tm.tabs.count == before && !c.root.palette.isOpen && c.root.sidebarVisible
+            l.close(); return ok
+        }())
+
+        // 加到 Tabs：搬移同一個 WKWebView，不重新載入
+        tm.select(base)
+        let l5 = c.openLittle(server.url("/a?l5"))!
+        _ = await wait { l5.tab.pageTitle == "Page A" }
+        _ = try? await l5.tab.webView.evaluateJavaScript("window.__marker = 42; 1")
+        let wv = l5.tab.webView
+        let n = tm.tabs.count
+        check("⌘O 加到 Tabs", l5.window.performKeyEquivalent(with: keyEvent("o", .command, in: l5.window)) && l5.isClosed)
+        check("成為新的一般 Tab：插在原選中 Tab 之後並被選中、視窗關閉", tm.tabs.count == n + 1 && tm.activeTab === l5.tab
+              && tm.tabs[(tm.tabs.firstIndex { $0 === base } ?? 0) + 1] === l5.tab && c.littles.isEmpty)
+        check("搬移同一個 WKWebView 且顯示在主視窗卡片", l5.tab.webView === wv && c.root.card.subviews.first === wv && wv.superview === c.root.card)
+        let marker = try? await wv.evaluateJavaScript("window.__marker") as? Int
+        check("頁面狀態保留（沒有重新載入）", marker == 42, "\(String(describing: marker))")
+        check("加入後不進還原堆疊、導覽仍可用", tm.closedStack.count == closedBefore && l5.tab.onRequestClose != nil && l5.tab.popupInPlace == false)
+        let l6 = c.openLittle(server.url("/b?l6"))!
+        _ = await wait { l6.tab.pageTitle == "Page B" }
+        let n6 = tm.tabs.count
+        check("⌘Return 加到 Tabs", l6.window.performKeyEquivalent(with: returnEvent(.command, in: l6.window)) && tm.tabs.count == n6 + 1 && tm.activeTab === l6.tab)
+        let l7 = c.openLittle(server.url("/c?l7"))!
+        let n7 = tm.tabs.count
+        l7.root.addButton.performClick(nil)
+        check("「Add to Tabs」按鈕加到 Tabs", tm.tabs.count == n7 + 1 && tm.activeTab === l7.tab && l7.isClosed)
+
+        // Option+點連結
+        let page = tm.newTab(url: server.url("/popup"))
+        _ = await wait { page.pageTitle == "Popup Opener" }
+        let tabsN = tm.tabs.count
+        var seen: [URL] = []
+        let prev = page.onOptionClick
+        page.onOptionClick = { seen.append($0); prev?($0) }
+        func decide(_ a: WKNavigationAction) -> WKNavigationActionPolicy {
+            var out: WKNavigationActionPolicy = .allow
+            page.webView(page.webView, decidePolicyFor: a) { out = $0 }
+            return out
+        }
+        check("Option+點連結：取消導覽並開 Little", decide(FakeNavAction(server.url("/b?opt"), mods: .option)) == .cancel && seen == [server.url("/b?opt")] && c.littles.count == 1)
+        c.littles.first?.close()
+        seen = []
+        check("⌘+點連結不受影響（放行、不開 Little）", decide(FakeNavAction(server.url("/b"), mods: .command)) == .allow && seen.isEmpty && c.littles.isEmpty)
+        check("⌥⌘+點也不攔截", decide(FakeNavAction(server.url("/b"), mods: [.option, .command])) == .allow && seen.isEmpty)
+        check("一般點擊不受影響", decide(FakeNavAction(server.url("/b"))) == .allow && seen.isEmpty)
+        check("Option 但不是點連結（重新整理/表單）不攔截", decide(FakeNavAction(server.url("/b"), type: .reload, mods: .option)) == .allow && seen.isEmpty)
+        check("Option+點非 http(s) 連結不開 Little", decide(FakeNavAction(URL(string: "mailto:a@b.c")!, mods: .option)) == .cancel && seen.isEmpty && c.littles.isEmpty)
+        // 真實 WebKit：把帶 Option 的真實滑鼠事件送進 WKWebView（在連結座標按下/放開）。
+        tm.select(page)
+        c.window.makeKeyAndOrderFront(nil)
+        c.window.makeFirstResponder(page.webView)
+        let rect = (try? await page.webView.evaluateJavaScript("(()=>{const r=document.getElementById('l').getBoundingClientRect();return [r.left+r.width/2, r.top+r.height/2]})()")) as? [Double]
+        func mouse(_ type: NSEvent.EventType, _ p: NSPoint, _ mods: NSEvent.ModifierFlags) -> NSEvent {
+            NSEvent.mouseEvent(with: type, location: p, modifierFlags: mods, timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: c.window.windowNumber,
+                               context: nil, eventNumber: 0, clickCount: 1, pressure: 1)!
+        }
+        if let rect, rect.count == 2 {
+            let inView = NSPoint(x: rect[0], y: rect[1])
+            let winPt = page.webView.convert(inView, to: nil)
+            c.window.sendEvent(mouse(.leftMouseDown, winPt, .option))
+            c.window.sendEvent(mouse(.leftMouseUp, winPt, .option))
+        }
+        let viaReal = await wait(3) { c.littles.count == 1 }
+        if viaReal {
+            check("真實滑鼠事件：Option+點連結開 Little、原頁不導航、不新增 Tab", c.littles.first?.tab.requestedURL == server.url("/b") && page.url == server.url("/popup") && tm.tabs.count == tabsN)
+            c.littles.first?.close()
+        } else {
+            print("   (略過：合成的 Option 滑鼠事件沒有觸發連結導覽，僅以 WKNavigationAction 單元驗證；真實手感待實測)")
+        }
+        // 一般點擊（無修飾鍵）真實 WebKit：target=_blank 仍是新 Tab
+        _ = try? await page.webView.evaluateJavaScript("document.getElementById('l').click(); 1")
+        check("一般點擊 target=_blank 仍開新 Tab（不走 Little）", await wait { tm.tabs.count == tabsN + 1 } && c.littles.isEmpty)
+
+        // Little 內：window.open / target=_blank 就地開啟；標題純文字；錯誤頁
+        let lp = c.openLittle(server.url("/popup"))!
+        _ = await wait { lp.tab.pageTitle == "Popup Opener" }
+        let tabsBefore = tm.tabs.count
+        _ = try? await lp.tab.webView.evaluateJavaScript("document.getElementById('l').click(); 1")
+        check("Little 內 target=_blank 就地開啟（不新增 Tab 或 Little）", await wait { lp.tab.pageTitle == "Page B" } && tm.tabs.count == tabsBefore && c.littles.count == 1)
+        lp.close()
+        let lx = c.openLittle(server.url("/xss"))!
+        check("Little 標題當純文字", await wait { lx.root.titleLabel.stringValue.hasPrefix("<img") })
+        lx.close()
+        let tmp = try FixtureServer()
+        await tmp.start()
+        let dead = tmp.url("/x")
+        tmp.stop()
+        try? await Task.sleep(nanoseconds: 200_000_000)
+        let le = c.openLittle(dead)!
+        check("Little 載入失敗顯示說明頁並結束載入狀態", await wait { le.tab.errorURL == dead && !le.tab.isLoading && !le.root.card.loadingBar.isActive })
+        le.close()
+
+        // 外部連結依設定
+        let ext = BrowserWindowController(dataStore: .nonPersistent(), storage: tempStorage("ext"), prefs: Preferences(defaults: UserDefaults(suiteName: suite)!), autosave: false)
+        ext.prefs.externalLinksInLittle = true
+        check("冷啟動：只有一個空白 Tab", ext.tabs.tabs.count == 1 && ext.tabs.tabs[0].displayURL == nil)
+        ext.openExternal([server.url("/b")])
+        check("外部連結（設定開啟）走 Little，不多開 Tab", ext.littles.count == 1 && ext.tabs.tabs.count == 1 && ext.tabs.tabs[0].displayURL == nil)
+        ext.closeAllLittles()
+        ext.prefs.externalLinksInLittle = false
+        ext.openExternal([server.url("/b")])
+        check("外部連結（設定關閉）走新 Tab：重用冷啟動的空白 Tab，不多開", ext.littles.isEmpty && ext.tabs.tabs.count == 1 && ext.tabs.tabs[0].displayURL == server.url("/b"))
+        ext.openExternal([server.url("/c")])
+        check("之後的外部連結開新 Tab", ext.tabs.tabs.count == 2)
+        // 結束時關閉所有 Little
+        ext.prefs.externalLinksInLittle = true
+        ext.openExternal([server.url("/a"), server.url("/b")])
+        let both = ext.littles.count
+        ext.flushPersistence()
+        check("flush（退出前）會關閉所有 Little", both == 2 && ext.littles.isEmpty)
+        // 選單項目
+        let item = NSApp.mainMenu?.items.compactMap { $0.submenu?.items.first { $0.title == "Open External Links in Little Window" } }.first
+        check("File 選單有「Open External Links in Little Window」勾選項", item != nil && item?.action != nil)
+        ext.window.close()
+        for l in c.littles { l.close() }
+        c.window.close()
     }
 }
