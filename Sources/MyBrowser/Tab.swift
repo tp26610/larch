@@ -165,6 +165,54 @@ final class Tab: NSObject, WKNavigationDelegate, WKUIDelegate {
         decisionHandler(.deny)
     }
 
+    // MARK: HTTP 驗證（憑證只用於這次請求，不存檔）
+
+    struct AuthRequest {
+        let host: String
+        let realm: String
+        let isSecure: Bool
+        let isRetry: Bool
+    }
+
+    /// 回傳 (帳號, 密碼)，取消回傳 nil。測試可替換。
+    static var authPrompt: @MainActor (AuthRequest) -> (String, String)? = { request in
+        let alert = NSAlert()
+        alert.messageText = "Sign in to \(request.host)"
+        var info = request.realm.isEmpty ? "" : "Realm: \(request.realm)\n"
+        if request.isRetry { info += "The user name or password was rejected.\n" }
+        if !request.isSecure { info += "This connection is not encrypted; the password will be sent in a form that can be read on the network." }
+        alert.informativeText = info
+        let user = NSTextField(frame: NSRect(x: 0, y: 30, width: 260, height: 24))
+        user.placeholderString = "User name"
+        let pass = NSSecureTextField(frame: NSRect(x: 0, y: 0, width: 260, height: 24))
+        pass.placeholderString = "Password"
+        let box = NSView(frame: NSRect(x: 0, y: 0, width: 260, height: 56))
+        box.addSubview(user); box.addSubview(pass)
+        alert.accessoryView = box
+        alert.addButton(withTitle: "Sign In")
+        alert.addButton(withTitle: "Cancel")
+        alert.window.initialFirstResponder = user
+        return alert.runModal() == .alertFirstButtonReturn ? (user.stringValue, pass.stringValue) : nil
+    }
+
+    func webView(_ webView: WKWebView, didReceive challenge: URLAuthenticationChallenge,
+                 completionHandler: @escaping @MainActor @Sendable (URLSession.AuthChallengeDisposition, URLCredential?) -> Void) {
+        let space = challenge.protectionSpace
+        let methods = [NSURLAuthenticationMethodHTTPBasic, NSURLAuthenticationMethodHTTPDigest, NSURLAuthenticationMethodNTLM]
+        // 伺服器憑證等其他挑戰走預設處理（不通過就是錯誤頁，不提供略過）。
+        guard methods.contains(space.authenticationMethod) else {
+            completionHandler(.performDefaultHandling, nil)
+            return
+        }
+        let request = AuthRequest(host: space.host, realm: space.realm ?? "", isSecure: space.protocol == "https",
+                                  isRetry: challenge.previousFailureCount > 0)
+        if let (user, password) = Tab.authPrompt(request) {
+            completionHandler(.useCredential, URLCredential(user: user, password: password, persistence: .none))
+        } else {
+            completionHandler(.cancelAuthenticationChallenge, nil)
+        }
+    }
+
     // MARK: JS 對話框與檔案選擇（網頁正常運作所需）
 
     func webView(_ webView: WKWebView, runJavaScriptAlertPanelWithMessage message: String,

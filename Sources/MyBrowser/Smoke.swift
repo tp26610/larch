@@ -41,6 +41,14 @@ final class FixtureServer: @unchecked Sendable {
         conn.receive(minimumIncompleteLength: 1, maximumLength: 8192) { [weak self] data, _, _, _ in
             guard let self, let data, let req = String(data: data, encoding: .utf8) else { conn.cancel(); return }
             let path = req.split(separator: " ").dropFirst().first.map(String.init) ?? "/"
+            if path.hasPrefix("/auth") {
+                let ok = req.contains("Authorization: Basic dGVzdDpwdw==")
+                let body = ok ? Self.html("Authed", "ok") : Self.html("Denied")
+                let head = ok ? "HTTP/1.1 200 OK\r\n" : "HTTP/1.1 401 Unauthorized\r\nWWW-Authenticate: Basic realm=\"Fixture\"\r\n"
+                let full = head + "Content-Type: text/html; charset=utf-8\r\nContent-Length: \(body.count)\r\nConnection: close\r\n\r\n"
+                conn.send(content: Data(full.utf8) + body, completion: .contentProcessed { _ in conn.cancel() })
+                return
+            }
             let (type, body, delay) = Self.route(path)
             let extra = path.hasPrefix("/file") ? "Content-Disposition: attachment; filename=\"report.txt\"\r\n" : ""
             let head = "HTTP/1.1 200 OK\r\nContent-Type: \(type)\r\n\(extra)Content-Length: \(body.count)\r\nConnection: close\r\n\r\n"
@@ -282,6 +290,7 @@ enum Smoke {
         try await downloadChecks(server, app)
         try await errorPageChecks(server, app)
         try await findZoomChecks(server, app)
+        try await authChecks(server, app)
     }
 }
 
@@ -420,5 +429,23 @@ extension Smoke {
         c.tabs.select(t)
         check("⌘0 還原", press("0", .command, in: c.window) && t.webView.pageZoom == 1.0 && c.tabs.zoom.zoom(for: host) == 1)
         c.tabs.close(t2); c.tabs.close(t3); c.tabs.close(t)
+    }
+}
+
+extension Smoke {
+    static func authChecks(_ server: FixtureServer, _ app: AppDelegate) async throws {
+        print("HTTP 驗證")
+        let c = app.controller!
+        var asked: [Tab.AuthRequest] = []
+        var answer: (String, String)? = ("test", "pw")
+        Tab.authPrompt = { asked.append($0); return answer }
+        let t = c.tabs.newTab(url: server.url("/auth"))
+        check("提示並以正確帳密通過", await wait { t.pageTitle == "Authed" } && asked.first?.realm == "Fixture" && asked.first?.isSecure == false)
+        answer = nil
+        let t2 = c.tabs.newTab()
+        let before = asked.count
+        t2.load(URL(string: "http://localhost:\(server.port)/auth")!)
+        check("取消驗證不載入受保護內容", await wait { asked.count > before } && t2.pageTitle != "Authed")
+        c.tabs.close(t2); c.tabs.close(t)
     }
 }
