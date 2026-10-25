@@ -1,4 +1,4 @@
-# my-browser-mac — 專案脈絡（給 Claude Code 與未來的自己）
+# Larch — 專案脈絡（給 Claude Code 與未來的自己）
 
 ## 為什麼做這個
 Brian（Senior Engineering Manager，台灣，用繁體中文溝通）因 Arc 將於 2026-12-22 sunset 而自製瀏覽器。核心功能依重要性：Little Arc（點連結先在小視窗看一眼）、Ctrl+Tab MRU 切換、Command Palette（⌘T）。
@@ -14,17 +14,17 @@ Brian（Senior Engineering Manager，台灣，用繁體中文溝通）因 Arc �
 ## 指令
 ```bash
 swift build
-swift run MyBrowser                 # 執行
+swift run Larch                 # 執行
 scripts/smoke.sh                    # 105 項煙霧測試，驅動真實視窗與 WKWebView（會開視窗）
-scripts/bundle.sh                   # build/My Browser.app（Info.plist 含 http/https、html 宣告）
+scripts/bundle.sh                   # build/Larch.app（Info.plist 含 http/https、html 宣告）
 scripts/install.sh                  # 安裝到 /Applications（見 README）
-.build/debug/MyBrowser --live-check https://accounts.google.com /tmp/out
+.build/debug/Larch --live-check https://accounts.google.com /tmp/out
                                     # 真實網站檢查：印標題/網址，存 /tmp/out-sidebar.png、/tmp/out-page.png
 ```
-改完功能請跑 `scripts/smoke.sh`；新增行為時在 `Sources/MyBrowser/Smoke.swift` 加 check。
+改完功能請跑 `scripts/smoke.sh`；新增行為時在 `Sources/Larch/Smoke.swift` 加 check。
 建置選擇：Swift Package + 腳本打包（不用 .xcodeproj，diff 乾淨、CLI 可建置）。Swift 語言模式為 5（避免 AppKit/WebKit 的嚴格並行檢查雜訊），工具鏈 6.2。
 
-## 架構（Sources/MyBrowser）
+## 架構（Sources/Larch）
 ```
 main.swift / AppDelegate.swift   進入點、選單（所有快捷鍵走選單）、命令列網址、--smoke / --live-check
 BrowserWindowController.swift    組裝：視窗、RootView、TabManager、網址列、動作

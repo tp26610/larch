@@ -2,10 +2,10 @@
 import PackageDescription
 
 let package = Package(
-    name: "MyBrowser",
+    name: "Larch",
     platforms: [.macOS(.v14)],
     targets: [
-        .executableTarget(name: "MyBrowser", path: "Sources/MyBrowser"),
+        .executableTarget(name: "Larch", path: "Sources/Larch"),
     ],
     swiftLanguageModes: [.v5]
 )

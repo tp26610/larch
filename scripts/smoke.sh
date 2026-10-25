@@ -3,4 +3,4 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 swift build
-"$(swift build --show-bin-path)/MyBrowser" --smoke
+"$(swift build --show-bin-path)/Larch" --smoke

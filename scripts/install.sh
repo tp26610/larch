@@ -3,8 +3,8 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 scripts/bundle.sh
-pkill -x MyBrowser 2>/dev/null || true
-rm -rf "/Applications/My Browser.app"
-cp -R "build/My Browser.app" "/Applications/My Browser.app"
-/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -f "/Applications/My Browser.app"
-echo "已安裝到 /Applications/My Browser.app"
+pkill -x Larch 2>/dev/null || true
+rm -rf "/Applications/Larch.app"
+cp -R "build/Larch.app" "/Applications/Larch.app"
+/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -f "/Applications/Larch.app"
+echo "已安裝到 /Applications/Larch.app"

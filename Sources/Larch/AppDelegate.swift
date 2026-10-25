@@ -12,9 +12,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.mainMenu = buildMenu()
         // smoke 用暫存的 data store，不污染真實 cookie。
         let store: WKWebsiteDataStore = smoke ? .nonPersistent() : .default()
-        let storage = smoke ? Storage(directory: FileManager.default.temporaryDirectory.appendingPathComponent("mybrowser-smoke-\(getpid())"))
+        let storage = smoke ? Storage(directory: FileManager.default.temporaryDirectory.appendingPathComponent("larch-smoke-\(getpid())"))
                             : .standard
-        controller = BrowserWindowController(dataStore: store, storage: storage, downloads: DownloadManager(directory: smoke ? storage.directory.appendingPathComponent("Downloads") : FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask)[0]), zoom: ZoomStore(defaults: smoke ? (UserDefaults(suiteName: "mybrowser-smoke-\(getpid())") ?? .standard) : .standard), autosave: !smoke)
+        controller = BrowserWindowController(dataStore: store, storage: storage, downloads: DownloadManager(directory: smoke ? storage.directory.appendingPathComponent("Downloads") : FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask)[0]), zoom: ZoomStore(defaults: smoke ? (UserDefaults(suiteName: "larch-smoke-\(getpid())") ?? .standard) : .standard), autosave: !smoke)
         NSApp.activate(ignoringOtherApps: true)
         // 命令列給的網址在新分頁開啟（open -a ... --args URL）。
         for arg in CommandLine.arguments.dropFirst() {
@@ -40,7 +40,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let appURL = Bundle.main.bundleURL
         for scheme in ["http", "https"] {
             NSWorkspace.shared.setDefaultApplication(at: appURL, toOpenURLsWithScheme: scheme) { error in
-                if let error { NSLog("MyBrowser: 設為預設瀏覽器失敗（\(scheme)）：\(error.localizedDescription)") }
+                if let error { NSLog("Larch: 設為預設瀏覽器失敗（\(scheme)）：\(error.localizedDescription)") }
             }
         }
     }
@@ -89,12 +89,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return i
         }
         let me = self
-        add("My Browser", [
-            item("About My Browser", #selector(NSApplication.orderFrontStandardAboutPanel(_:))),
+        add("Larch", [
+            item("About Larch", #selector(NSApplication.orderFrontStandardAboutPanel(_:))),
             item("Make Default Browser…", #selector(makeDefaultBrowser), target: me),
             .separator(),
-            item("Hide My Browser", #selector(NSApplication.hide(_:)), "h"),
-            item("Quit My Browser", #selector(NSApplication.terminate(_:)), "q"),
+            item("Hide Larch", #selector(NSApplication.hide(_:)), "h"),
+            item("Quit Larch", #selector(NSApplication.terminate(_:)), "q"),
         ])
         add("File", [
             item("New Tab", #selector(newTab), "t", target: me),

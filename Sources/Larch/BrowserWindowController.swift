@@ -23,7 +23,7 @@ final class BrowserWindowController: NSObject, NSTextFieldDelegate, NSWindowDele
                           backing: .buffered, defer: false)
         super.init()
         window.isReleasedWhenClosed = false
-        window.title = "My Browser"
+        window.title = "Larch"
         window.titlebarAppearsTransparent = true
         window.titleVisibility = .hidden
         window.isMovableByWindowBackground = true

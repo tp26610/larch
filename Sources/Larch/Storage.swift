@@ -6,7 +6,7 @@ struct Storage {
 
     static var standard: Storage {
         let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-        return Storage(directory: base.appendingPathComponent("MyBrowser", isDirectory: true))
+        return Storage(directory: base.appendingPathComponent("Larch", isDirectory: true))
     }
 
     func read<T: Decodable>(_ name: String, as type: T.Type) -> T? {
@@ -20,7 +20,7 @@ struct Storage {
             let data = try JSONEncoder().encode(value)
             try data.write(to: directory.appendingPathComponent(name), options: .atomic)
         } catch {
-            NSLog("MyBrowser: 寫入 \(name) 失敗：\(error.localizedDescription)")
+            NSLog("Larch: 寫入 \(name) 失敗：\(error.localizedDescription)")
         }
     }
 }

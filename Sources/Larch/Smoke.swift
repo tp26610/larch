@@ -114,13 +114,13 @@ enum Smoke {
     static func run(_ app: AppDelegate) async {
         setvbuf(stdout, nil, _IOLBF, 0)
         do { try await body(app) } catch { print("  FAIL exception \(error)"); failed += 1 }
-        UserDefaults.standard.removePersistentDomain(forName: "mybrowser-smoke-\(getpid())")
+        UserDefaults.standard.removePersistentDomain(forName: "larch-smoke-\(getpid())")
         print("\n\(passed) passed, \(failed) failed")
         exit(failed == 0 ? 0 : 1)
     }
 
     /// 真實網站檢查：載入網址、印出標題與最終網址，並把側邊欄與網頁各存成 PNG（不需要螢幕錄製權限）。
-    /// 用法：MyBrowser --live-check https://accounts.google.com /tmp/out  → /tmp/out-sidebar.png、/tmp/out-page.png
+    /// 用法：Larch --live-check https://accounts.google.com /tmp/out  → /tmp/out-sidebar.png、/tmp/out-page.png
     static func liveCheck(_ app: AppDelegate, url: String, outPrefix: String) async {
         let c = app.controller!
         c.submitAddress(url)
@@ -306,7 +306,7 @@ enum Smoke {
 
 extension Smoke {
     static func tempStorage(_ tag: String) -> Storage {
-        Storage(directory: FileManager.default.temporaryDirectory.appendingPathComponent("mybrowser-\(tag)-\(UUID().uuidString)"))
+        Storage(directory: FileManager.default.temporaryDirectory.appendingPathComponent("larch-\(tag)-\(UUID().uuidString)"))
     }
 
     static func sessionChecks(_ server: FixtureServer, _ app: AppDelegate) async throws {
