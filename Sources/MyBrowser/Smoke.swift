@@ -103,6 +103,30 @@ enum Smoke {
         exit(failed == 0 ? 0 : 1)
     }
 
+    /// 真實網站檢查：載入網址、印出標題與最終網址，並把側邊欄與網頁各存成 PNG（不需要螢幕錄製權限）。
+    /// 用法：MyBrowser --live-check https://accounts.google.com /tmp/out  → /tmp/out-sidebar.png、/tmp/out-page.png
+    static func liveCheck(_ app: AppDelegate, url: String, outPrefix: String) async {
+        let c = app.controller!
+        c.submitAddress(url)
+        _ = await wait(20) { c.tabs.activeTab?.isLoading == false && c.tabs.activeTab?.url != nil }
+        try? await Task.sleep(nanoseconds: 2_500_000_000)
+        guard let tab = c.tabs.activeTab else { exit(1) }
+        print("title: \(tab.pageTitle)\nurl: \(tab.url?.absoluteString ?? "-")\nfavicon: \(tab.favicon != nil)")
+        func save(_ image: NSImage?, _ path: String) {
+            guard let tiff = image?.tiffRepresentation, let rep = NSBitmapImageRep(data: tiff),
+                  let png = rep.representation(using: .png, properties: [:]) else { return }
+            try? png.write(to: URL(fileURLWithPath: path))
+        }
+        save(await withCheckedContinuation { k in tab.webView.takeSnapshot(with: nil) { img, _ in k.resume(returning: img) } }, outPrefix + "-page.png")
+        let sb = c.sidebar
+        if let rep = sb.bitmapImageRepForCachingDisplay(in: sb.bounds) {
+            sb.cacheDisplay(in: sb.bounds, to: rep)
+            let img = NSImage(size: sb.bounds.size); img.addRepresentation(rep)
+            save(img, outPrefix + "-sidebar.png")
+        }
+        exit(0)
+    }
+
     static func body(_ app: AppDelegate) async throws {
         let server = try FixtureServer()
         await server.start()

@@ -14,7 +14,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let store: WKWebsiteDataStore = smoke ? .nonPersistent() : .default()
         controller = BrowserWindowController(dataStore: store, autosave: !smoke)
         NSApp.activate(ignoringOtherApps: true)
-        if smoke {
+        // 命令列給的網址在新分頁開啟（open -a ... --args URL）。
+        for arg in CommandLine.arguments.dropFirst() {
+            if let input = InputNormalizer.normalize(arg), input.kind == .url { controller.tabs.newTab(url: input.url) }
+        }
+        if let i = CommandLine.arguments.firstIndex(of: "--live-check"), i + 2 < CommandLine.arguments.count {
+            let url = CommandLine.arguments[i + 1], out = CommandLine.arguments[i + 2]
+            Task { @MainActor in await Smoke.liveCheck(self, url: url, outPrefix: out) }
+        } else if smoke {
             Task { @MainActor in await Smoke.run(self) }
         }
     }
