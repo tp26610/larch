@@ -24,8 +24,8 @@ final class Tab: NSObject, WKNavigationDelegate, WKUIDelegate {
     var onOptionClick: ((URL) -> Void)?
     /// window.open / target=_blank 在同一個 view 就地開啟（Little 視窗用）。
     var popupInPlace = false
-    /// 最近一次被選中的時間（命令列排序用）。
-    var lastActiveAt = Date()
+    /// 最近使用順序：越大越近（TabManager 在選中時遞增指派；命令列與 Ctrl+Tab 用）。
+    var mruSeq = 0
 
     private var observations: [NSKeyValueObservation] = []
     private var faviconTask: URLSessionDataTask?

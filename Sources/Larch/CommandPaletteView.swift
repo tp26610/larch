@@ -30,8 +30,13 @@ final class PaletteRowView: NSView {
         case .action: symbol = "command"
         case .history: symbol = "clock"
         }
-        icon.image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)
-        icon.contentTintColor = Theme.paletteMuted
+        if let custom = item.icon {
+            icon.image = custom
+            icon.imageScaling = .scaleProportionallyUpOrDown
+        } else {
+            icon.image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)
+            icon.contentTintColor = Theme.paletteMuted
+        }
         titleLabel.stringValue = item.title
         titleLabel.font = .systemFont(ofSize: 14)
         titleLabel.textColor = Theme.paletteText
@@ -201,6 +206,35 @@ final class CommandPaletteView: NSView, NSTextFieldDelegate {
         onDismiss?()
     }
 
+    // MARK: 切換器模式（Ctrl+Tab MRU）：只有清單、沒有輸入框；不搶焦點，按鍵由 LarchWindow 處理。
+
+    /// 顯示切換清單並選取 selected。
+    func presentSwitcher(items newItems: [PaletteItem], selected: Int) {
+        mode = .switcher
+        isHidden = false
+        field.stringValue = ""
+        updateChrome()
+        setItems(newItems)
+        selectedIndex = min(max(0, selected), max(0, items.count - 1))
+        updateSelection()
+    }
+
+    func setSwitcherSelection(_ i: Int) {
+        guard mode == .switcher, items.indices.contains(i) else { return }
+        selectedIndex = i
+        updateSelection()
+    }
+
+    /// 關閉切換清單（不觸發 onDismiss：焦點本來就沒動過）。
+    func hideSwitcher() {
+        guard mode == .switcher else { return }
+        isHidden = true
+        items = []
+        mode = .normal
+        updateChrome()
+        needsLayout = true
+    }
+
     /// Tab 進入動作模式（保留已輸入的文字作為動作的查詢）。
     func enterActions() {
         guard mode != .actions else { return }
@@ -219,14 +253,17 @@ final class CommandPaletteView: NSView, NSTextFieldDelegate {
 
     private func updateChrome() {
         chip.isHidden = mode != .actions
+        field.isHidden = mode == .switcher
         field.placeholderString = mode == .actions ? "Type an action…" : placeholder
         needsLayout = true
     }
 
     // MARK: 候選
 
-    func refresh() {
-        items = provider?(field.stringValue, mode) ?? []
+    func refresh() { setItems(provider?(field.stringValue, mode) ?? []) }
+
+    private func setItems(_ newItems: [PaletteItem]) {
+        items = newItems
         selectedIndex = 0
         rowViews.forEach { $0.removeFromSuperview() }
         rowViews = items.enumerated().map { i, item in
@@ -304,7 +341,8 @@ final class CommandPaletteView: NSView, NSTextFieldDelegate {
         let contentH = n == 0 ? 0 : CGFloat(n) * Self.rowHeight + CGFloat(n - 1) * Self.rowSpacing
         let viewH = shown == 0 ? 0 : CGFloat(shown) * Self.rowHeight + CGFloat(shown - 1) * Self.rowSpacing
         let listAreaH = n == 0 ? 0 : viewH + 16
-        let h = Self.fieldHeight + (n == 0 ? 0 : 1) + listAreaH
+        let header = mode == .switcher ? 0 : Self.fieldHeight
+        let h = header + (n == 0 || mode == .switcher ? 0 : 1) + listAreaH
         // anchorFrame 以非翻轉座標給（RootView），這裡 isFlipped，換算成由上往下。
         let top = bounds.height - anchorFrame.maxY + max(40, anchorFrame.height * 0.14)
         panel.frame = NSRect(x: anchorFrame.midX - w / 2, y: top, width: w, height: h)
@@ -315,10 +353,10 @@ final class CommandPaletteView: NSView, NSTextFieldDelegate {
             fieldX = 16 + cw + 8
         }
         field.frame = NSRect(x: fieldX, y: (Self.fieldHeight - 24) / 2, width: w - fieldX - 20, height: 24)
-        divider.isHidden = n == 0
+        divider.isHidden = n == 0 || mode == .switcher
         divider.frame = NSRect(x: 0, y: Self.fieldHeight, width: w, height: 1)
         scroll.isHidden = n == 0
-        scroll.frame = NSRect(x: 8, y: Self.fieldHeight + 9, width: w - 16, height: viewH)
+        scroll.frame = NSRect(x: 8, y: header + (mode == .switcher ? 8 : 9), width: w - 16, height: viewH)
         listDoc.frame = NSRect(x: 0, y: 0, width: w - 16, height: contentH)
         list.frame = listDoc.bounds
         ensureSelectedVisible()

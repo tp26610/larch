@@ -313,6 +313,7 @@ enum Smoke {
         try await closeKeyChecks(server, app)
         try await littleChecks(server, app)
         try await littleRoutingChecks(server, app)
+        try await switcherChecks(server, app)
         try await paletteChecks(server, app)
         try await doubleClickChecks(server, app)
         try await trafficLightChecks(server, app)
@@ -1468,7 +1469,7 @@ extension Smoke {
         let other = tm.newTab(url: server.url("/b?route"))
         _ = await wait { base.pageTitle == "Page A" && other.pageTitle == "Page B" }
         tm.select(other)
-        m.window.makeKeyAndOrderFront(nil)
+        await ensureActive(m.window)
         func newLittle(_ q: String) async -> LittleWindowController {
             let l = m.openLittle(server.url("/a?\(q)"))!
             _ = await wait { l.tab.pageTitle == "Page A" }
@@ -1492,7 +1493,7 @@ extension Smoke {
             let n = tm.tabs.count, active = tm.activeTab
             let l = await newLittle("menuonly")
             _ = NSApp.mainMenu?.performKeyEquivalent(with: keyEvent("w", .command, in: l.window))
-            check("只走選單的 ⌘W（Little 為 key）：關 Little、不動主視窗 Tab", l.isClosed && tm.tabs.count == n && tm.activeTab === active)
+            check("只走選單的 ⌘W（Little 為 key）：關 Little、不動主視窗 Tab", l.isClosed && tm.tabs.count == n && tm.activeTab === active, "closed=\(l.isClosed) tabs \(n)->\(tm.tabs.count) littleKey=\(l.window.isKeyWindow) mainKey=\(m.window.isKeyWindow) active=\(NSApp.isActive) sameActive=\(tm.activeTab === active)")
         }
         do {
             let n = tm.tabs.count
@@ -1551,7 +1552,8 @@ extension Smoke {
             check("⌘R 重新整理 Little 的頁面（主視窗不受影響）", await wait(3) { l.tab.isLoading } && tm.activeTab!.isLoading == mainBefore)
             _ = await wait(5) { !l.tab.isLoading }
             l.tab.load(server.url("/b?back"))
-            _ = await wait { l.tab.pageTitle == "Page B" && l.root.backButton.isEnabled }
+            _ = await wait { l.tab.pageTitle == "Page B" && l.tab.webView.canGoBack && l.root.backButton.isEnabled && !l.tab.isLoading }
+            l.window.makeKeyAndOrderFront(nil)
             NSApp.sendEvent(keyEvent("[", .command, in: l.window))
             check("⌘[ 上一頁作用在 Little", await wait { l.tab.pageTitle == "Page A" })
             // Esc / ⌘O / ⌘Return 在各種焦點下
@@ -1571,5 +1573,203 @@ extension Smoke {
         }
         _ = tm.restoreLast
         m.window.makeKeyAndOrderFront(nil)
+    }
+}
+
+extension Smoke {
+    /// 依賴 key window 的檢查需要 app 在前景；若系統不讓 app 啟用（使用者正在操作別的 app）就印出警告。
+    static func ensureActive(_ w: NSWindow) async {
+        for _ in 0..<40 {
+            if NSApp.isActive, w.isKeyWindow { return }
+            NSApp.activate(ignoringOtherApps: true)
+            w.makeKeyAndOrderFront(nil)
+            try? await Task.sleep(nanoseconds: 50_000_000)
+        }
+        print("   WARN app 不在前景（active=\(NSApp.isActive) key=\(w.isKeyWindow)）：需要 key window 的檢查可能不穩定")
+    }
+
+    static func ctrlTab(_ mods: NSEvent.ModifierFlags = .control, in w: NSWindow) -> NSEvent {
+        NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: mods, timestamp: 0, windowNumber: w.windowNumber, context: nil,
+                         characters: "\t", charactersIgnoringModifiers: "\t", isARepeat: false, keyCode: 48)!
+    }
+
+    /// 放開 Control（flagsChanged，修飾鍵清空）。
+    static func ctrlUp(in w: NSWindow) -> NSEvent {
+        NSEvent.keyEvent(with: .flagsChanged, location: .zero, modifierFlags: [], timestamp: 0, windowNumber: w.windowNumber, context: nil,
+                         characters: "", charactersIgnoringModifiers: "", isARepeat: false, keyCode: 59)!
+    }
+
+    static func switcherChecks(_ server: FixtureServer, _ app: AppDelegate) async throws {
+        print("Ctrl+Tab 最近使用切換")
+        let c = BrowserWindowController(dataStore: .nonPersistent(), storage: tempStorage("mru"), autosave: false)
+        let tm = c.tabs, w = c.window, p = c.root.palette
+        await ensureActive(c.window)
+        let t1 = tm.newTab(url: server.url("/a?m1")), t2 = tm.newTab(url: server.url("/b?m2")), t3 = tm.newTab(url: server.url("/c?m3"))
+        _ = await wait { t1.pageTitle == "Page A" && t2.pageTitle == "Page B" && t3.pageTitle == "頁面 C" }
+        func order() -> [Tab] { tm.mruTabs.filter { [t1, t2, t3].contains($0) } }
+        func names() -> String { order().map { $0 === t1 ? "1" : $0 === t2 ? "2" : "3" }.joined() }
+        check("MRU 初始順序：最近建立（選中）的在前", names() == "321", names())
+        tm.select(t1)
+        check("選中後移到最前", names() == "132", names())
+
+        await ensureActive(w)
+        // 快速按一下：不顯示 UI，切到 MRU 第二個；再按一下回到前一個
+        w.makeFirstResponder(t1.webView)
+        NSApp.sendEvent(ctrlTab(in: w))
+        NSApp.sendEvent(ctrlUp(in: w))
+        check("快速 Ctrl+Tab：切到 MRU 第二個（t3）", tm.activeTab === t3, "key=\(w.isKeyWindow) app=\(NSApp.isActive) keyWindowIsC=\(NSApp.keyWindow === w)")
+        try? await Task.sleep(nanoseconds: 300_000_000)
+        check("快速按一下完全不顯示清單（不閃）", !p.isOpen && !c.switcher.isShowing && !c.switcher.isActive)
+        NSApp.sendEvent(ctrlTab(in: w)); NSApp.sendEvent(ctrlUp(in: w))
+        check("再快速按一下回到前一個（t1）", tm.activeTab === t1, "key=\(w.isKeyWindow) app=\(NSApp.isActive) resignCommits=\(c.switcher.resignCommits) active=\(String(describing: tm.activeTab?.pageTitle)) mru=\(tm.mruTabs.map(\.mruSeq))")
+        check("切換後焦點在網頁", w.firstResponder === t1.webView)
+
+        await ensureActive(w)
+        // 按住：超過延遲才顯示；連按、反向、放開確認
+        let before = tm.activeTab
+        NSApp.sendEvent(ctrlTab(in: w))
+        check("按下當下尚未顯示清單", !p.isOpen && c.switcher.isActive)
+        check("超過約 150ms 顯示切換清單（初始選第二個）", await wait(1) { p.isOpen && p.mode == .switcher } && p.selectedIndex == 1 && p.items.count >= 3)
+        check("清單列出 Tab 標題（純文字）與網址，依最近使用排序", p.rows.first?.titleText == before?.displayTitle && p.items.allSatisfy { $0.kind == .tab })
+        check("切換清單沒有輸入框與 chip", p.field.isHidden && !p.isChipVisible)
+        check("按住期間尚未切換", tm.activeTab === before)
+        NSApp.sendEvent(ctrlTab(in: w))
+        check("按住 Ctrl 連按 Tab：往下一個", p.selectedIndex == 2)
+        NSApp.sendEvent(ctrlTab([.control, .shift], in: w))
+        NSApp.sendEvent(ctrlTab([.control, .shift], in: w))
+        check("Ctrl+Shift+Tab：往上一個，且循環到最後", p.selectedIndex == p.items.count - 1 || p.selectedIndex == 0)
+        NSApp.sendEvent(ctrlTab([.control, .shift], in: w))
+        let target = c.switcher.list[c.switcher.index]
+        NSApp.sendEvent(ctrlUp(in: w))
+        check("放開 Ctrl：確認切換並關閉清單", tm.activeTab === target && !p.isOpen && !c.switcher.isActive)
+        check("確認後它成為最近使用", tm.mruTabs.first === target)
+
+        await ensureActive(w)
+        // Esc 取消
+        let orig = tm.activeTab
+        NSApp.sendEvent(ctrlTab(in: w))
+        _ = await wait(1) { p.isOpen }
+        NSApp.sendEvent(ctrlTab(in: w))
+        NSApp.sendEvent(escEvent(in: w))
+        check("Esc 取消：回到原 Tab、關閉清單", tm.activeTab === orig && !p.isOpen && !c.switcher.isActive)
+        NSApp.sendEvent(ctrlUp(in: w))
+        check("取消後放開 Ctrl 不再切換", tm.activeTab === orig)
+
+        await ensureActive(w)
+        // 閒置自動確認
+        c.switcher.idleTimeout = 0.4
+        let expect = tm.mruTabs[1]
+        NSApp.sendEvent(ctrlTab(in: w))
+        check("閒置逾時自動確認", await wait(2) { !c.switcher.isActive && tm.activeTab === expect && !p.isOpen })
+        c.switcher.idleTimeout = 10
+
+        // 各種焦點狀態：網頁、網址列、改名欄、尋找列、命令列之外
+        func tryFocus(_ name: String, _ focus: () -> Void) async {
+            await ensureActive(w)
+            focus()
+            let start = tm.activeTab
+            let second = tm.mruTabs[1]
+            NSApp.sendEvent(ctrlTab(in: w))
+            _ = await wait(1) { p.isOpen }
+            let shown = p.isOpen
+            NSApp.sendEvent(ctrlUp(in: w))
+            check("焦點在\(name)：Ctrl+Tab 顯示清單且放開 Ctrl 後確認切換", shown && tm.activeTab === second && tm.activeTab !== start && !p.isOpen, "shown=\(shown) key=\(w.isKeyWindow) app=\(NSApp.isActive) resign=\(c.switcher.resignCommits) fr=\(String(describing: w.firstResponder))")
+            check("焦點在\(name)：確認後不殘留切換狀態、焦點交給網頁", !c.switcher.isActive && w.firstResponder === tm.activeTab?.webView)
+        }
+        await tryFocus("網頁") { w.makeFirstResponder(tm.activeTab?.webView) }
+        await tryFocus("側邊欄網址列") { c.focusAddress() }
+        await tryFocus("Tab 改名欄") { c.sidebar.rowViews.first { $0.tab === tm.activeTab }?.beginRename() }
+        await tryFocus("尋找列") { c.showFind() }
+        c.closeFind()
+
+        await ensureActive(w)
+        // 命令列開啟時 Ctrl+Tab 被忽略（它自己的 Tab 鍵是動作模式）
+        c.openPalette(prefill: nil)
+        let keep = tm.activeTab
+        NSApp.sendEvent(ctrlTab(in: w)); NSApp.sendEvent(ctrlUp(in: w))
+        check("命令列開啟時 Ctrl+Tab 不處理（不切換、命令列仍開著）", tm.activeTab === keep && p.isOpen && p.mode == .normal && !c.switcher.isActive)
+        p.dismiss()
+
+        // 其他 Ctrl 組合不受影響（選單動作作用在 app 的主 controller，所以用它的視窗驗證）
+        do {
+            let m = app.controller!
+            m.window.makeKeyAndOrderFront(nil)
+            let vis = m.root.sidebarVisible
+            NSApp.sendEvent(keyEvent("s", .control, in: m.window))
+            check("Ctrl+S 仍可用（切換器不吃其他 Ctrl 組合）", m.root.sidebarVisible != vis)
+            NSApp.sendEvent(keyEvent("s", .control, in: m.window))
+            let extra = m.tabs.newTab(url: server.url("/a?extra"))
+            let n = m.tabs.tabs.count
+            NSApp.sendEvent(keyEvent("w", .control, in: m.window))
+            check("Ctrl+W 仍可用", m.tabs.tabs.count == n - 1 && !m.tabs.tabs.contains { $0 === extra })
+            c.window.makeKeyAndOrderFront(nil)
+        }
+
+        // 關閉 Tab 後 MRU 維持正確；釘選開著的會列、灰色的不列
+        tm.select(t1); tm.select(t2); tm.select(t3)
+        check("MRU 順序", names() == "321", names())
+        tm.close(t3)
+        check("關閉目前 Tab 後切到的 Tab 算最近使用，已關閉的不在清單", !tm.mruTabs.contains { $0 === t3 } && tm.mruTabs.first === tm.activeTab)
+        let pinNode = tm.pin(t2)!
+        NSApp.sendEvent(ctrlTab(in: w))
+        _ = await wait(1) { p.isOpen }
+        check("切換清單包含釘選中開著的 Tab", c.switcher.list.contains { $0 === t2 })
+        NSApp.sendEvent(escEvent(in: w))
+        tm.close(t2)
+        NSApp.sendEvent(ctrlTab(in: w))
+        _ = await wait(1) { p.isOpen }
+        check("灰色（已關閉）的釘選不列", !c.switcher.list.contains { $0.pinID == pinNode.id } && tm.pins.find(pinNode.id) != nil)
+        NSApp.sendEvent(escEvent(in: w))
+
+        // 只有一個 Tab：不處理、不顯示
+        while tm.tabs.count > 1 { tm.close(tm.tabs.last!) }
+        NSApp.sendEvent(ctrlTab(in: w))
+        try? await Task.sleep(nanoseconds: 300_000_000)
+        check("只有一個 Tab 時 Ctrl+Tab 不顯示清單也不切換", !p.isOpen && !c.switcher.isActive)
+        NSApp.sendEvent(ctrlUp(in: w))
+
+        // 失去 key window 時確認（Ctrl 可能在 app 外放開）
+        let a2 = tm.newTab(url: server.url("/a?resign")), b2 = tm.newTab(url: server.url("/b?resign"))
+        _ = await wait { a2.pageTitle == "Page A" && b2.pageTitle == "Page B" }
+        let wantSecond = tm.mruTabs[1]
+        NSApp.sendEvent(ctrlTab(in: w))
+        c.windowDidResignKey(Notification(name: NSWindow.didResignKeyNotification))
+        check("切換中失去 key window：視同放開 Ctrl 確認", tm.activeTab === wantSecond && !c.switcher.isActive && !p.isOpen)
+
+        // 命令列動作 Switch to Previous Tab
+        let prev = tm.mruTabs[1]
+        c.openPalette(prefill: nil)
+        p.enterActions(); p.field.stringValue = "previous"; p.refresh()
+        if let i = p.items.firstIndex(where: { if case .runAction("previousTab") = $0.action { return true } else { return false } }) { p.pick(i) }
+        check("動作 Switch to Previous Tab（⌃⇥）切到 MRU 第二個", tm.activeTab === prev)
+
+        // Little 為 key window 時不處理
+        let before2 = tm.activeTab
+        let l = c.openLittle(server.url("/a?little-ct"))!
+        _ = await wait { l.tab.pageTitle == "Page A" }
+        NSApp.sendEvent(ctrlTab(in: l.window)); NSApp.sendEvent(ctrlUp(in: l.window))
+        check("Little 為 key window：Ctrl+Tab 不處理（主視窗 Tab 不變、無清單）", tm.activeTab === before2 && !p.isOpen && !c.switcher.isActive && !l.isClosed)
+        l.close()
+        if let dir = ProcessInfo.processInfo.environment["LARCH_SHOT_DIR"] {
+            while tm.tabs.count > 1 { tm.close(tm.tabs.last!) }
+            for path in ["/doc", "/text", "/a", "/b", "/c"] { tm.newTab(url: server.url(path)) }
+            _ = await wait { tm.tabs.dropFirst().allSatisfy { !$0.pageTitle.isEmpty && !$0.isLoading } }
+            tm.pin(tm.tabs[2])
+            tm.select(tm.tabs[3]); tm.select(tm.tabs[5]); tm.select(tm.tabs[1])
+            c.window.setContentSize(NSSize(width: 1000, height: 640))
+            c.window.makeFirstResponder(tm.activeTab?.webView)
+            try? await Task.sleep(nanoseconds: 800_000_000) // 版面變動後頁面標題可能短暫為空，等它穩定
+            NSApp.sendEvent(ctrlTab(in: w))
+            NSApp.sendEvent(ctrlTab(in: w))
+            _ = await wait(1) { p.isOpen }
+            try? await Task.sleep(nanoseconds: 300_000_000)
+            c.root.layoutSubtreeIfNeeded()
+            if let rep = c.root.bitmapImageRepForCachingDisplay(in: c.root.bounds) {
+                c.root.cacheDisplay(in: c.root.bounds, to: rep)
+                try? rep.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: dir + "/switcher.png"))
+            }
+            NSApp.sendEvent(escEvent(in: w))
+        }
+        c.window.close()
     }
 }

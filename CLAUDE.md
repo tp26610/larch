@@ -15,7 +15,7 @@ Brian（Senior Engineering Manager，台灣，用繁體中文溝通）因 Arc �
 ```bash
 swift build
 swift run Larch                 # 執行
-scripts/smoke.sh                    # 328 項煙霧測試，驅動真實視窗與 WKWebView（會開視窗）
+scripts/smoke.sh                    # 365 項煙霧測試，驅動真實視窗與 WKWebView（會開視窗）
 scripts/bundle.sh                   # build/Larch.app（Info.plist 含 http/https、html 宣告）
 scripts/install.sh                  # 安裝到 /Applications（見 README）
 .build/debug/Larch --live-check https://accounts.google.com /tmp/out
@@ -32,6 +32,7 @@ RootView（SidebarView.swift）    manual layout：側邊欄 + CardView；sideba
 SidebarView / AddressBar         側邊欄（導覽按鈕、網址列、Tab 列表、New Tab）
 TabRowView.swift                 一列 Tab：favicon、標題、載入光條、改名、關閉
 Tab.swift                        一個 WKWebView + navigation/UI delegate、favicon、權限
+TabSwitcher.swift                Ctrl+Tab MRU 切換器（狀態機：快速按/按住顯示/連按/放開確認/Esc/閒置）
 TabManager.swift                 tabs、activeTab、closedStack(25)、選取與關閉邏輯
 InputNormalizer.swift            網址/搜尋判斷（對應 my-browser util.js normalizeInput）
 Storage.swift                    Application Support JSON 讀寫（容錯）+ Debouncer
@@ -87,8 +88,10 @@ Smoke.swift                      FixtureServer（本機假網站）+ smoke 檢�
 
 23. **Little Arc**（外觀：白色色調，顏色集中在 `Theme.little*`——淺白外框與工具列、中央淺灰網域膠囊（只顯示網域，完整標題與網址在 toolTip）、右側「Add to Tabs ⌘O」按鈕、深灰圖示；主視窗維持鼠尾草綠，兩者一眼可分）：`Tab.decidePolicyFor` 在 `navigationType == .linkActivated` 且含 Option、不含 ⌘、http(s) 時 `.cancel` 並呼叫 `onOptionClick`（TabManager 接到 controller 的 `openLittle`）。Little 視窗的 Tab 由 `TabManager.makeTab()` 建立（共用 data store/下載/縮放，瀏覽寫歷史），**不在 `tabs` 清單裡**，所以關閉不進 closedStack、也不會被 session 存。`TabManager.adopt(tab)` 把它「搬進」主視窗：同一個 WKWebView、重接回呼、插在目前 Tab 之後並選中，頁面狀態不重載；`LittleWindowController.transferred` 為真時關視窗不 `teardown`。Little 內 `popupInPlace`（window.open / target=_blank 就地載入）。`LittleWindow` 是 `LarchWindow` 子類，Esc / ⌘W / Ctrl+W / ⌘O / ⌘Return / ⌘R / ⌘[ ⌘] 在視窗層級攔截（網頁焦點下也有效），並吞掉 ⌘T/⌘L/⌘S/⌘D/Ctrl+S 避免誤動主視窗。**選單動作依 key window 分派**（曾有 bug：選單 target 固定是主 controller，Little 為 key 時 ⌘W 關到主視窗的 Tab）：`BrowserWindowController.keyLittle` / `targetTab`，⌘W / Ctrl+W、⌘R、⌘[ ⌘]、縮放、複製網址（含 Markdown）在 Little 為 key 時作用在 Little 的頁面；`AppDelegate.validateMenuItem` 在 Little 為 key 時停用其餘會動主視窗的項目（New Tab、Open Location、Pin、Toggle Sidebar、Restore Closed Tab、New Folder、Duplicate、Find…），Little 沒有尋找列所以 ⌘F/⌘G 也停用。關閉 Little 後主視窗回到 key。外部連結開 Little 時 app 可能仍在啟用中、先前的 key window（主視窗）會被還原，所以 Little 開啟後會 `NSApp.activate` 並在下一輪 runloop 再確認一次自己是 key window。外部連結（`openExternal`）依 `Preferences.externalLinksInLittle`（預設 true）走 Little 或新 Tab；新 Tab 時若只有一個全新空白 Tab 就重用它（修掉冷啟動多一個空白 Tab）。同網址 300ms 內重複開 Little 會被忽略。退出前 `flushPersistence` 關閉所有 Little。截圖 `docs/little.png`（smoke 以 `LARCH_SHOT_LITTLE=1` 留住視窗，用 `screencapture -l` 分別擷取後合成；視窗擷取不含 WKWebView 內容，頁面內容是否出現取決於擷取時機）。
 
+24. **Ctrl+Tab MRU 切換**：MRU 由 `TabManager` 在 `select` 與關閉後切換時遞增 `Tab.mruSeq`（`mruTabs` 依它排序；只含 `tabs` 清單裡的 Tab，所以灰色釘選與 Little 不在內）。事件入口是 **`LarchApplication.sendEvent`**（`main.swift` 用它當 NSApplication）→ key window 的 `LarchWindow.keyHandler`（主視窗設為 `TabSwitcher.handle`，Little 不設）：**Ctrl+Tab 是系統 key-view loop 鍵，不會走到 `NSWindow.sendEvent`，必須在 NSApplication 層處理**；keyDown Tab+Control 開始/往下、加 Shift 往上，flagsChanged 且 Control 放開 → 確認，Esc → 取消。這裡只「消耗 keyDown」，flagsChanged 與 keyUp 照常送達，所以沒有 Electron 版那個「吞掉 Ctrl+Tab 就收不到 Ctrl 放開」的坑，焦點在 WKWebView、欄位或覆蓋層都收得到。快速按（150ms 內放開）不顯示 UI 直接切；超過 `showDelay` 才用 `CommandPaletteView.presentSwitcher`（`PaletteMode.switcher`：只有清單、不搶焦點、不經過 onDismiss）；閒置 `idleTimeout`（10 秒）自動確認；視窗失去 key（Ctrl 可能在 app 外放開）視同確認。命令列（⌘T/⌘L）開著時 Ctrl+Tab 忽略（它的 Tab 鍵是動作模式）。切換清單的標題在顯示當下取得。截圖 `docs/switcher.png`。**smoke 注意**：依賴 key window 的檢查（Little 與切換器）需要 Larch 一直在前景，跑 smoke 時不要操作其他視窗，否則會因 app 失去啟用而偶發失敗（`ensureActive` 只在區段開頭確認一次）。
+
 ## 驗證狀況
-- smoke 328/328 通過（macOS 26 / Swift 6.2.4）；accounts.google.com 登入頁載入成功（含 favicon）。
+- smoke 365/365 通過（macOS 26 / Swift 6.2.4）；accounts.google.com 登入頁載入成功（含 favicon）。
 - 冷啟動與已執行時 `open -a` 開外部連結已用打包的 .app 實測（session.json 有新 Tab）。
 - 尚未在真實視窗手動驗證：真實 Option+點連結的手感（smoke 已送合成的 Option 滑鼠事件進 WKWebView）、外部連結走 Little 的實際流程（需設為預設瀏覽器）、Little 視窗拖曳/雙擊/縮放手感、實際把它設為預設瀏覽器、真實鍵盤的 ⌘= 放大、拖曳視窗手感、紅綠燈位置、側邊欄隱藏時滑鼠實際移到左上角的紅綠燈淡入淡出、全螢幕進出、捲動手感、Google 實際帳密登入與重開後保持登入（只驗證登入頁載入；持久性依據實驗專案的結果）、下載、HTTP 驗證對話框、全螢幕影片。
 

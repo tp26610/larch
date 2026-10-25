@@ -85,10 +85,23 @@ final class TabManager {
     /// Option+點連結要開 Little 視窗（由 controller 接）。
     var onOpenLittle: ((URL) -> Void)?
 
+    private var mruCounter = 0
+
+    /// 標記為最近使用。
+    private func stamp(_ tab: Tab) {
+        mruCounter += 1
+        tab.mruSeq = mruCounter
+    }
+
+    /// 已開啟的 Tab（含釘選中開著的），最近使用的在前；沒用過的依清單順序排在後面。
+    var mruTabs: [Tab] {
+        tabs.enumerated().sorted { $0.element.mruSeq != $1.element.mruSeq ? $0.element.mruSeq > $1.element.mruSeq : $0.offset < $1.offset }.map(\.element)
+    }
+
     func select(_ tab: Tab) {
         guard tabs.contains(where: { $0 === tab }), activeTab !== tab else { return }
         activeTab = tab
-        tab.lastActiveAt = Date()
+        stamp(tab)
         onActiveChange?()
     }
 
@@ -108,6 +121,7 @@ final class TabManager {
                 activeTab = next
             }
         }
+        if let active = activeTab { stamp(active) } // 關閉後切到的 Tab 算最近使用
         onStructureChange?()
         if tabs.isEmpty {
             newTab()

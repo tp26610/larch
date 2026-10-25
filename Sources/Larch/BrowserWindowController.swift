@@ -70,6 +70,7 @@ final class BrowserWindowController: NSObject, NSTextFieldDelegate, NSWindowDele
         sidebar.setBackgroundMenu(makeBackgroundMenu())
         tabs.onActiveChange = { [weak self] in self?.activeChanged() }
         tabs.onTabChange = { [weak self] in self?.tabChanged($0) }
+        (window as? LarchWindow)?.keyHandler = { [weak self] event in self?.switcher.handle(event) ?? false }
         root.onSidebarVisibilityChange = { [weak self] _ in self?.syncTrafficLights() }
         root.onCornerHover = { [weak self] in self?.cornerHover = $0; self?.syncTrafficLights() }
         syncTrafficLights(animated: false)
@@ -86,6 +87,10 @@ final class BrowserWindowController: NSObject, NSTextFieldDelegate, NSWindowDele
     func syncTrafficLights(animated: Bool = true) {
         (window as? LarchWindow)?.setTrafficLights(visible: root.sidebarVisible || cornerHover, animated: animated)
     }
+
+    lazy var switcher = TabSwitcher(controller: self)
+
+    func windowDidResignKey(_ notification: Notification) { switcher.resignKey() }
 
     func windowDidEnterFullScreen(_ notification: Notification) { syncTrafficLights(animated: false) }
     func windowDidExitFullScreen(_ notification: Notification) { syncTrafficLights(animated: false) }
@@ -523,6 +528,12 @@ final class BrowserWindowController: NSObject, NSTextFieldDelegate, NSWindowDele
     // MARK: 動作表用的操作（與選單共用）
 
     /// 空白 Tab，接著叫出覆蓋層輸入網址（在這個新 Tab 導航）。
+    /// 動作「Switch to Previous Tab」：切到最近使用的上一個 Tab。
+    func switchToPreviousTab() {
+        let mru = tabs.mruTabs
+        if mru.count >= 2 { tabs.select(mru[1]); window.makeFirstResponder(mru[1].webView) }
+    }
+
     func newBlankTab() {
         tabs.newTab()
         showAddressPalette()

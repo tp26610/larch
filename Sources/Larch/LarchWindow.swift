@@ -78,8 +78,22 @@ class LarchWindow: NSWindow {
         }
     }
 
+    /// 主視窗的 Ctrl+Tab 切換器掛在這裡（Little 視窗不設）。由 `LarchApplication.sendEvent` 在最前面呼叫，回傳 true = 已處理。
+    var keyHandler: ((NSEvent) -> Bool)?
+
     override func sendEvent(_ event: NSEvent) {
         if event.type == .leftMouseDown, event.clickCount == 2, MainActor.assumeIsolated({ handleDoubleClick(at: event.locationInWindow) }) { return }
+        super.sendEvent(event)
+    }
+}
+
+/// 應用程式層級的事件入口。Ctrl+Tab 是系統的 key-view loop 鍵，不會走到 NSWindow.sendEvent，
+/// 所以要在 NSApplication.sendEvent 最前面處理（keyDown Tab+Control、flagsChanged 放開 Control、Esc）。
+/// 這只是「觀察並消耗」事件，之後的 keyUp / flagsChanged 仍照常送達，不會有 Electron 版那種收不到 Ctrl 放開的問題。
+final class LarchApplication: NSApplication {
+    override func sendEvent(_ event: NSEvent) {
+        if event.type == .keyDown || event.type == .flagsChanged,
+           let handler = (keyWindow as? LarchWindow)?.keyHandler, handler(event) { return }
         super.sendEvent(event)
     }
 }

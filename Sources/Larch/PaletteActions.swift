@@ -24,6 +24,8 @@ enum PaletteActions {
     static let all: [PaletteAction] = [
         PaletteAction(id: "restore", title: fixed("Restore Last Closed Tab"), keywords: "reopen undo closed recent", shortcut: "⌘⇧T",
                       isAvailable: { !$0.tabs.closedStack.isEmpty }, run: { $0.restoreTab() }),
+        PaletteAction(id: "previousTab", title: fixed("Switch to Previous Tab"), keywords: "mru recent last back switch", shortcut: "⌃⇥",
+                      isAvailable: { $0.tabs.tabs.count >= 2 }, run: { $0.switchToPreviousTab() }),
         PaletteAction(id: "new", title: fixed("New Blank Tab"), keywords: "create open empty", shortcut: nil,
                       isAvailable: always, run: { $0.newBlankTab() }),
         PaletteAction(id: "close", title: fixed("Close Tab"), keywords: "remove", shortcut: "⌘W",
