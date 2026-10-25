@@ -18,6 +18,8 @@ final class Tab: NSObject, WKNavigationDelegate, WKUIDelegate {
     var onVisit: ((URL, String) -> Void)?
     var onRequestClose: ((Tab) -> Void)?
     var zoomStore: ZoomStore?
+    /// 釘選的 Tab 對應的 PinNode.id；nil 代表一般 Tab。
+    var pinID: UUID?
 
     private var observations: [NSKeyValueObservation] = []
     private var faviconTask: URLSessionDataTask?

@@ -22,6 +22,7 @@ final class PaletteRowView: NSView {
         switch item.kind {
         case .openOrSearch: symbol = "magnifyingglass"
         case .tab: symbol = "rectangle.on.rectangle"
+        case .pin: symbol = "pin"
         case .history: symbol = "clock"
         }
         icon.image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)

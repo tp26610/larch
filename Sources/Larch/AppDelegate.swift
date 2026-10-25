@@ -64,6 +64,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc func newTab() { controller.showPalette() }
     @objc func closeTab() { controller.closeCurrentTab() }
+    @objc func togglePin() { controller.togglePinAction() }
+    @objc func newFolder() { controller.newFolderAction() }
     @objc func restoreTab() { controller.restoreTab() }
     @objc func focusAddress() { controller.focusAddress() }
     @objc func reload() { controller.reload() }
@@ -107,6 +109,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             item("Open Location", #selector(focusAddress), "l", target: me),
             item("Close Tab", #selector(closeTab), "w", target: me),
             item("Close Tab (Ctrl+W)", #selector(closeTab), "w", .control, target: me),
+            item("Pin / Unpin Tab", #selector(togglePin), "d", target: me),
+            item("New Folder", #selector(newFolder), "N", [.command, .shift], target: me),
             item("Restore Closed Tab", #selector(restoreTab), "T", [.command, .shift], target: me),
         ])
         add("Edit", [

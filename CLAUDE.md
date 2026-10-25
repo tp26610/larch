@@ -15,7 +15,7 @@ Brian（Senior Engineering Manager，台灣，用繁體中文溝通）因 Arc �
 ```bash
 swift build
 swift run Larch                 # 執行
-scripts/smoke.sh                    # 177 項煙霧測試，驅動真實視窗與 WKWebView（會開視窗）
+scripts/smoke.sh                    # 217 項煙霧測試，驅動真實視窗與 WKWebView（會開視窗）
 scripts/bundle.sh                   # build/Larch.app（Info.plist 含 http/https、html 宣告）
 scripts/install.sh                  # 安裝到 /Applications（見 README）
 .build/debug/Larch --live-check https://accounts.google.com /tmp/out
@@ -40,6 +40,8 @@ DownloadManager.swift            WKDownload → 下載資料夾，重名加序�
 ErrorPage.swift                  載入失敗說明頁（全部跳脫、CSP 禁腳本）
 FindBar.swift                    頁內尋找列 + ZoomStore（以 host 記縮放，存 UserDefaults）
 Theme.swift                      顏色與尺寸
+PinStore.swift                   釘選與資料夾的樹（PinNode）、pins.json、移動/刪除/防循環
+SidebarRows.swift                SidebarItem（拖曳字串）、資料夾列、分隔線、落點提示、拖曳來源
 LoadingBarView.swift             卡片頂端載入進度條（estimatedProgress）
 LarchWindow.swift                主視窗子類別（⌘W/Ctrl+W 按鍵路徑、雙擊 bar）
 CommandPaletteView.swift         ⌘T 命令列覆蓋層（輸入框 + 候選列；provider / onPick 由 controller 注入，可重用）
@@ -77,8 +79,11 @@ Smoke.swift                      FixtureServer（本機假網站）+ smoke 檢�
 
 20. **載入狀態**：`Tab` 以 KVO 觀察 `isLoading` 與 `estimatedProgress`（都走 `onChange`）；`BrowserWindowController.syncLoading` 只把目前 Tab 的狀態餵給 `CardView.loadingBar`（3px、貼卡片上緣被圓角裁切、`hitTest` 為 nil 不擋點擊捲動）與停止鈕，切換 Tab 時 `animated: false` 立即反映。結束（完成、失敗、停止）一律走 `isLoading == false`，進度條衝到 100% 後淡出。Tab 列載入中以 `NSProgressIndicator` spinner 取代 favicon（舊的底部掃動光條已移除）。已知：`load()` 後立刻 `stopLoading()`（毫秒內）WebKit 會丟掉 stop、isLoading 卡住；人手點擊不會遇到，smoke 的停止檢查要先等約 0.4 秒。**注意：macOS app 忽略 `HOME` 環境變數，`HOME=...` 不能隔離資料，直接執行 Larch 會讀寫真實的 `~/Library/Application Support/Larch/`**（`--hide-sidebar`、`--open-palette` 截圖時要留意）。載入中截圖見 `docs/loading.png`。
 
+21. **釘選與資料夾**：`PinStore` 是樹（`PinNode`：folder / tab，最上層可混放），存 `pins.json`，節點只在載入時過濾 http(s)。`Tab.pinID` 綁定節點；`TabManager.liveTab(forPin:)` / `activatePin` / `pin` / `unpin` / `moveTab`。關掉釘選 Tab 時節點保留（灰色列，`TabRowView.tab == nil`），點擊用節點網址重開並綁定；`closedStack` 與 session 都帶 `pinID`，還原時節點不存在或已被綁定就當一般 Tab。側邊欄順序：釘選樹（`PinStore.visible()`）→ `DividerRowView` → 一般 Tab（`pinID == nil`）。節點的標題與 favicon（PNG）在 `tabChanged` 時用 `PinStore.remember` 同步（不觸發重建，讓灰色列外觀正確）。
+22. **拖曳**：`SidebarView` 是整個清單的拖曳目的地（剪貼簿型別 `app.larch.sidebar-item`，字串 `tab:<uuid>` / `pin:<uuid>`）；它只做幾何（找到游標下的列與列內位置 0~1）與畫提示，語意交給 `BrowserWindowController.resolveDrop`（回傳 `DropPlan`：提示樣式 + commit）。規則：資料夾列上 25% 之前、下 25% 之後（收合或空資料夾才算「之後」）、中間放進去；釘選 Tab 列上/下半；分隔線 = 釘到最上層末尾 / 取消釘選；一般列重排；資料夾不能放進自己的子孫或一般區；灰色釘選拖到一般區會以該網址開成一般 Tab。smoke 以假的 `NSDraggingInfo` 走 `draggingUpdated` / `performDragOperation`，真實滑鼠拖曳（拖曳影像、自動捲動手感）沒有實測。截圖/排版參考 `docs/pins.png`（smoke 在 `LARCH_SHOT_DIR=<資料夾>` 時於暫存資料產生，不碰真實資料）。
+
 ## 驗證狀況
-- smoke 177/177 通過（macOS 26 / Swift 6.2.4）；accounts.google.com 登入頁載入成功（含 favicon）。
+- smoke 217/217 通過（macOS 26 / Swift 6.2.4）；accounts.google.com 登入頁載入成功（含 favicon）。
 - 冷啟動與已執行時 `open -a` 開外部連結已用打包的 .app 實測（session.json 有新 Tab）。
 - 尚未在真實視窗手動驗證：實際把它設為預設瀏覽器、真實鍵盤的 ⌘= 放大、拖曳視窗手感、紅綠燈位置、側邊欄隱藏時滑鼠實際移到左上角的紅綠燈淡入淡出、全螢幕進出、捲動手感、Google 實際帳密登入與重開後保持登入（只驗證登入頁載入；持久性依據實驗專案的結果）、下載、HTTP 驗證對話框、全螢幕影片。
 

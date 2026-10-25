@@ -2,11 +2,18 @@ import AppKit
 
 /// 側邊欄的一列 Tab。標題一律以純文字顯示（stringValue），不解析任何標記。
 @MainActor
-final class TabRowView: NSView, NSTextFieldDelegate {
-    let tab: Tab
-    var onSelect: ((Tab) -> Void)?
-    var onClose: ((Tab) -> Void)?
-    var onRename: ((Tab, String) -> Void)?
+final class TabRowView: NSView, NSTextFieldDelegate, SidebarRow {
+    /// 開著的 Tab；釘選的項目被關掉後為 nil（顯示成灰色，點一下重新開啟）。
+    var tab: Tab?
+    /// 釘選的節點；一般 Tab 為 nil。
+    let pin: PinNode?
+    let depth: Int
+    var item: SidebarItem { pin.map { .pin($0.id) } ?? .tab(tab?.id ?? UUID()) }
+    var onSelect: ((TabRowView) -> Void)?
+    var onClose: ((TabRowView) -> Void)?
+    var onRename: ((TabRowView, String) -> Void)?
+    var onMenu: ((TabRowView) -> NSMenu?)?
+    private var downPoint: NSPoint?
 
     private let iconView = NSImageView()
     private let placeholder = NSTextField(labelWithString: "")
@@ -24,8 +31,10 @@ final class TabRowView: NSView, NSTextFieldDelegate {
 
     override var mouseDownCanMoveWindow: Bool { false }
 
-    init(tab: Tab) {
+    init(tab: Tab?, pin: PinNode? = nil, depth: Int = 0) {
         self.tab = tab
+        self.pin = pin
+        self.depth = depth
         super.init(frame: .zero)
         wantsLayer = true
         layer?.cornerRadius = 8
@@ -78,7 +87,7 @@ final class TabRowView: NSView, NSTextFieldDelegate {
             addSubview(v)
         }
         NSLayoutConstraint.activate([
-            iconView.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 8),
+            iconView.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 8 + CGFloat(depth) * FolderRowView.indentStep),
             iconView.centerYAnchor.constraint(equalTo: centerYAnchor),
             iconView.widthAnchor.constraint(equalToConstant: 16),
             iconView.heightAnchor.constraint(equalToConstant: 16),
@@ -109,51 +118,66 @@ final class TabRowView: NSView, NSTextFieldDelegate {
 
     required init?(coder: NSCoder) { fatalError() }
 
-    /// 從 Tab 狀態同步畫面；改名中不動標題欄位。
+    /// 從 Tab（或釘選節點）狀態同步畫面；改名中不動標題欄位。
     func update() {
-        titleLabel.stringValue = tab.displayTitle
-        let loading = tab.isLoading
+        let gray = tab == nil
+        titleLabel.stringValue = tab?.displayTitle ?? pin?.title ?? ""
+        let loading = tab?.isLoading ?? false
+        let host = (tab?.url ?? pin?.url.flatMap(URL.init(string:)))?.host
+        let favicon = tab?.favicon ?? pin?.favicon.flatMap { NSImage(data: $0) }
         if loading {
             iconView.isHidden = true
             placeholder.isHidden = true
-        } else if let favicon = tab.favicon {
+        } else if let favicon {
             iconView.image = favicon
             iconView.isHidden = false
             placeholder.isHidden = true
         } else {
             iconView.isHidden = true
             placeholder.isHidden = false
-            placeholder.stringValue = String((tab.url?.host ?? "").replacingOccurrences(of: "www.", with: "").first.map { String($0).uppercased() } ?? "")
+            placeholder.stringValue = String((host ?? "").replacingOccurrences(of: "www.", with: "").first.map { String($0).uppercased() } ?? "")
         }
-        titleLabel.textColor = loading ? Theme.muted : Theme.text
+        titleLabel.textColor = loading ? Theme.muted : gray ? Theme.text.withAlphaComponent(0.55) : Theme.text
+        iconView.alphaValue = gray ? 0.55 : 1
+        placeholder.alphaValue = gray ? 0.55 : 1
         spinner.isHidden = !loading
         if loading { spinner.startAnimation(nil) } else { spinner.stopAnimation(nil) }
+        refreshBackground()
     }
 
     private func refreshBackground() {
         layer?.backgroundColor = (isActive ? Theme.active : hovering ? Theme.hover : NSColor.clear).cgColor
-        closeButton.alphaValue = (isActive || hovering) ? 0.8 : 0
+        closeButton.alphaValue = tab != nil && (isActive || hovering) ? 0.8 : 0
     }
 
     override func mouseEntered(with event: NSEvent) { hovering = true; refreshBackground() }
     override func mouseExited(with event: NSEvent) { hovering = false; refreshBackground() }
 
+    override func menu(for event: NSEvent) -> NSMenu? { onMenu?(self) }
+
     override func mouseDown(with event: NSEvent) {
+        downPoint = event.locationInWindow
         if event.clickCount >= 2 {
             beginRename()
         } else {
-            onSelect?(tab)
+            onSelect?(self)
         }
     }
 
-    @objc private func closeClicked() { onClose?(tab) }
+    override func mouseDragged(with event: NSEvent) {
+        guard let d = downPoint, hypot(event.locationInWindow.x - d.x, event.locationInWindow.y - d.y) > 4, finishedEditing else { return }
+        downPoint = nil
+        SidebarDragSource.begin(from: self, event: event)
+    }
+
+    @objc private func closeClicked() { onClose?(self) }
 
     // MARK: 改名（Enter 確認、Esc 取消、清空還原網頁標題）
 
     func beginRename() {
         guard finishedEditing else { return }
         finishedEditing = false
-        renameField.stringValue = tab.displayTitle
+        renameField.stringValue = tab?.displayTitle ?? pin?.title ?? ""
         renameField.isHidden = false
         titleLabel.isHidden = true
         window?.makeFirstResponder(renameField)
@@ -167,7 +191,7 @@ final class TabRowView: NSView, NSTextFieldDelegate {
         renameField.isHidden = true
         titleLabel.isHidden = false
         if window?.firstResponder === renameField.currentEditor() { window?.makeFirstResponder(nil) }
-        if commit { onRename?(tab, text) }
+        if commit { onRename?(self, text) }
         update()
     }
 

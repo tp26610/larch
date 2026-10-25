@@ -17,7 +17,7 @@ final class BrowserWindowController: NSObject, NSTextFieldDelegate, NSWindowDele
 
     init(dataStore: WKWebsiteDataStore, storage: Storage, downloads: DownloadManager? = nil, zoom: ZoomStore? = nil, autosave: Bool) {
         self.storage = storage
-        tabs = TabManager(dataStore: dataStore, downloads: downloads, zoom: zoom, history: HistoryStore(storage: storage))
+        tabs = TabManager(dataStore: dataStore, downloads: downloads, zoom: zoom, history: HistoryStore(storage: storage), pins: PinStore(storage: storage))
         window = LarchWindow(contentRect: NSRect(x: 0, y: 0, width: 1280, height: 820),
                           styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
                           backing: .buffered, defer: false)
@@ -54,12 +54,16 @@ final class BrowserWindowController: NSObject, NSTextFieldDelegate, NSWindowDele
         sidebar.downloadButton.action = #selector(downloadClicked)
         root.palette.provider = { [weak self] q in
             guard let self else { return [] }
-            return PaletteSearch.results(for: q, tabs: self.tabs.tabs, history: self.tabs.history)
+            return PaletteSearch.results(for: q, tabs: self.tabs.tabs, history: self.tabs.history,
+                                         pins: self.tabs.pins.allTabs.filter { self.tabs.liveTab(forPin: $0.id) == nil })
         }
         root.palette.onPick = { [weak self] item in self?.pick(item) }
         root.palette.onDismiss = { [weak self] in self?.paletteDismissed() }
         tabs.downloads.onChange = { [weak self] in self?.sidebar.showDownload($0) }
         tabs.onStructureChange = { [weak self] in self?.rebuildRows() }
+        tabs.pins.onChange = { [weak self] in self?.rebuildRows() }
+        sidebar.onResolveDrop = { [weak self] dragged, over, f in self?.resolveDrop(dragged, over: over, fraction: f) }
+        sidebar.setBackgroundMenu(makeBackgroundMenu())
         tabs.onActiveChange = { [weak self] in self?.activeChanged() }
         tabs.onTabChange = { [weak self] in self?.tabChanged($0) }
         root.onSidebarVisibilityChange = { [weak self] _ in self?.syncTrafficLights() }
@@ -90,7 +94,11 @@ final class BrowserWindowController: NSObject, NSTextFieldDelegate, NSWindowDele
         if let snap = SessionStore.load(storage) {
             var active: Tab?
             for (i, entry) in snap.tabs.enumerated() {
-                let tab = tabs.newTab(url: URL(string: entry.url), customTitle: entry.customTitle, activate: false)
+                // 釘選的 Tab 要對得上現存節點、且沒有別的 Tab 已綁定，否則當一般 Tab。
+                let pinID = entry.pinID.flatMap(UUID.init(uuidString:)).flatMap { id in
+                    tabs.pins.find(id)?.node.isFolder == false && tabs.liveTab(forPin: id) == nil ? id : nil
+                }
+                let tab = tabs.newTab(url: URL(string: entry.url), customTitle: entry.customTitle, activate: false, pinID: pinID)
                 if i == snap.active { active = tab }
             }
             if let active { tabs.select(active) }
@@ -112,16 +120,37 @@ final class BrowserWindowController: NSObject, NSTextFieldDelegate, NSWindowDele
     func flushPersistence() {
         sessionSaver.flush { saveSession() }
         tabs.history?.flush()
+        tabs.pins.flush()
     }
 
     // MARK: 同步畫面
 
     private func rebuildRows() {
         scheduleSessionSave()
-        let live = Set(tabs.tabs.map(\.id))
+        var live = Set(tabs.tabs.filter { $0.pinID == nil }.map(\.id))
+        let visiblePins = tabs.pins.visible()
+        live.formUnion(visiblePins.map(\.node.id))
         rows = rows.filter { live.contains($0.key) }
-        var ordered: [TabRowView] = []
-        for tab in tabs.tabs {
+        folderRows = folderRows.filter { live.contains($0.key) }
+        var ordered: [NSView] = []
+        for (node, depth) in visiblePins {
+            if node.isFolder {
+                let row = folderRows[node.id] ?? makeFolderRow(node, depth: depth)
+                row.update()
+                ordered.append(row)
+            } else {
+                let liveTab = tabs.liveTab(forPin: node.id)
+                // 層級或綁定的 Tab 變了就重建這一列（depth 是 init 參數）。
+                var row = rows[node.id]
+                if row == nil || row!.depth != depth { row = makePinRow(node, depth: depth) }
+                row!.tab = liveTab
+                row!.isActive = liveTab != nil && liveTab === tabs.activeTab
+                row!.update()
+                ordered.append(row!)
+            }
+        }
+        ordered.append(DividerRowView())
+        for tab in tabs.tabs where tab.pinID == nil {
             let row = rows[tab.id] ?? makeRow(tab)
             row.isActive = tab === tabs.activeTab
             ordered.append(row)
@@ -129,22 +158,203 @@ final class BrowserWindowController: NSObject, NSTextFieldDelegate, NSWindowDele
         sidebar.setRows(ordered)
     }
 
+    private var folderRows: [UUID: FolderRowView] = [:]
+
     private func makeRow(_ tab: Tab) -> TabRowView {
         let row = TabRowView(tab: tab)
-        row.onSelect = { [weak self] in self?.tabs.select($0) }
-        row.onClose = { [weak self] in self?.tabs.close($0) }
-        row.onRename = { tab, text in
-            let t = text.trimmingCharacters(in: .whitespacesAndNewlines)
-            tab.customTitle = t.isEmpty ? nil : t
-        }
+        wire(row)
         rows[tab.id] = row
         return row
+    }
+
+    private func makePinRow(_ node: PinNode, depth: Int) -> TabRowView {
+        let row = TabRowView(tab: tabs.liveTab(forPin: node.id), pin: node, depth: depth)
+        wire(row)
+        rows[node.id] = row
+        return row
+    }
+
+    private func wire(_ row: TabRowView) {
+        row.onSelect = { [weak self] row in
+            guard let self else { return }
+            if let pin = row.pin { self.tabs.activatePin(pin) } else if let tab = row.tab { self.tabs.select(tab) }
+        }
+        row.onClose = { [weak self] row in if let tab = row.tab { self?.tabs.close(tab) } }
+        row.onRename = { [weak self] row, text in
+            let t = text.trimmingCharacters(in: .whitespacesAndNewlines)
+            if let tab = row.tab { tab.customTitle = t.isEmpty ? nil : t }
+            if let pin = row.pin { self?.tabs.pins.rename(pin.id, to: t); row.update() }
+        }
+        row.onMenu = { [weak self] row in self?.menu(for: row) }
+    }
+
+    private func makeFolderRow(_ node: PinNode, depth: Int) -> FolderRowView {
+        let row = FolderRowView(node: node, depth: depth)
+        row.onToggle = { [weak self] node in self?.tabs.pins.setExpanded(node.id, !node.expanded) }
+        row.onRename = { [weak self] node, text in self?.tabs.pins.rename(node.id, to: text) }
+        row.onMenu = { [weak self] row in self?.menu(for: row) }
+        folderRows[node.id] = row
+        return row
+    }
+
+    // MARK: 釘選與資料夾的操作
+
+    private func menuItem(_ title: String, _ sel: Selector, id: UUID? = nil) -> NSMenuItem {
+        let item = NSMenuItem(title: title, action: sel, keyEquivalent: "")
+        item.target = self
+        item.representedObject = id
+        return item
+    }
+
+    private func menu(for row: TabRowView) -> NSMenu {
+        let m = NSMenu()
+        if let pin = row.pin {
+            m.addItem(menuItem("Unpin", #selector(unpinClicked(_:)), id: pin.id))
+            m.addItem(menuItem("Rename", #selector(renameClicked(_:)), id: pin.id))
+            if row.tab != nil { m.addItem(menuItem("Close Tab", #selector(closeRowClicked(_:)), id: pin.id)) }
+        } else if let tab = row.tab {
+            m.addItem(menuItem("Pin Tab", #selector(pinTabClicked(_:)), id: tab.id))
+            m.addItem(menuItem("Rename", #selector(renameClicked(_:)), id: tab.id))
+            m.addItem(menuItem("Close Tab", #selector(closeRowClicked(_:)), id: tab.id))
+        }
+        m.addItem(.separator())
+        m.addItem(menuItem("New Folder", #selector(newFolderClicked(_:))))
+        return m
+    }
+
+    private func menu(for row: FolderRowView) -> NSMenu {
+        let m = NSMenu()
+        m.addItem(menuItem("Rename", #selector(renameClicked(_:)), id: row.node.id))
+        m.addItem(menuItem("New Folder Inside", #selector(newFolderClicked(_:)), id: row.node.id))
+        m.addItem(.separator())
+        m.addItem(menuItem("Delete Folder (Keep Contents)", #selector(deleteFolderClicked(_:)), id: row.node.id))
+        return m
+    }
+
+    private func makeBackgroundMenu() -> NSMenu {
+        let m = NSMenu()
+        m.addItem(menuItem("New Folder", #selector(newFolderClicked(_:))))
+        return m
+    }
+
+    private func tab(withID id: UUID) -> Tab? { tabs.tabs.first { $0.id == id } }
+
+    @objc private func pinTabClicked(_ sender: NSMenuItem) {
+        if let id = sender.representedObject as? UUID, let t = tab(withID: id) { tabs.pin(t) }
+    }
+
+    @objc private func unpinClicked(_ sender: NSMenuItem) {
+        if let id = sender.representedObject as? UUID, let n = tabs.pins.find(id)?.node { tabs.unpin(n) }
+    }
+
+    @objc private func closeRowClicked(_ sender: NSMenuItem) {
+        guard let id = sender.representedObject as? UUID else { return }
+        if let t = tab(withID: id) ?? tabs.liveTab(forPin: id) { tabs.close(t) }
+    }
+
+    @objc private func renameClicked(_ sender: NSMenuItem) {
+        guard let id = sender.representedObject as? UUID else { return }
+        beginRename(id)
+    }
+
+    @objc private func deleteFolderClicked(_ sender: NSMenuItem) {
+        if let id = sender.representedObject as? UUID { tabs.pins.deleteFolder(id) }
+    }
+
+    @objc private func newFolderClicked(_ sender: NSMenuItem?) {
+        _ = newFolder(inside: sender?.representedObject as? UUID)
+    }
+
+    /// 新資料夾（預設在最上層末尾）並進入改名。
+    @discardableResult
+    func newFolder(inside parent: UUID? = nil) -> PinNode {
+        if !root.sidebarVisible { root.sidebarVisible = true }
+        let node = tabs.pins.addFolder(parent: parent)
+        beginRename(node.id)
+        return node
+    }
+
+    @objc func newFolderAction() { newFolder() }
+
+    @objc func togglePinAction() {
+        if let tab = tabs.activeTab { tabs.togglePin(tab) }
+    }
+
+    private func beginRename(_ id: UUID) {
+        if let r = folderRows[id] { r.beginRename() } else if let r = rows[id] ?? rows.values.first(where: { $0.tab?.id == id }) { r.beginRename() }
+    }
+
+    // MARK: 拖曳
+
+    enum DropDest { case pins(parent: UUID?, index: Int), regular(before: UUID?) }
+
+    /// 依被拖的東西與游標位置算出落點。nil = 不能放。
+    func resolveDrop(_ dragged: SidebarItem, over: SidebarItem?, fraction f: CGFloat) -> DropPlan? {
+        let pins = tabs.pins
+        let regular = tabs.tabs.filter { $0.pinID == nil }
+        var draggedFolder: PinNode?
+        if case .pin(let id) = dragged, let n = pins.find(id)?.node, n.isFolder { draggedFolder = n }
+        func pinsDest(parent: UUID?, index: Int, _ ind: DropPlan.Indicator) -> DropPlan? {
+            if let df = draggedFolder, let parent, parent == df.id || pins.isDescendant(parent, of: df.id) { return nil }
+            let d = DropDest.pins(parent: parent, index: index)
+            return DropPlan(indicator: ind) { [weak self] in self?.execute(dragged, d) }
+        }
+        func regularDest(before: UUID?, _ ind: DropPlan.Indicator) -> DropPlan? {
+            guard draggedFolder == nil else { return nil }
+            let d = DropDest.regular(before: before)
+            return DropPlan(indicator: ind) { [weak self] in self?.execute(dragged, d) }
+        }
+        switch over {
+        case nil:
+            return draggedFolder != nil ? pinsDest(parent: nil, index: pins.roots.count, .after) : regularDest(before: nil, .after)
+        case .divider?:
+            if case .tab = dragged { return pinsDest(parent: nil, index: pins.roots.count, .into) }
+            if draggedFolder != nil { return pinsDest(parent: nil, index: pins.roots.count, .into) }
+            return regularDest(before: regular.first?.id, .into)
+        case .pin(let id)?:
+            guard let loc = pins.find(id) else { return nil }
+            let parentID = loc.parent?.id
+            if loc.node.isFolder {
+                if f < 0.25 { return pinsDest(parent: parentID, index: loc.index, .before) }
+                if f > 0.75, !loc.node.expanded || loc.node.children.isEmpty { return pinsDest(parent: parentID, index: loc.index + 1, .after) }
+                return pinsDest(parent: id, index: 0, .into)
+            }
+            return f < 0.5 ? pinsDest(parent: parentID, index: loc.index, .before) : pinsDest(parent: parentID, index: loc.index + 1, .after)
+        case .tab(let id)?:
+            guard let i = regular.firstIndex(where: { $0.id == id }) else { return nil }
+            if f < 0.5 { return regularDest(before: id, .before) }
+            return regularDest(before: i + 1 < regular.count ? regular[i + 1].id : nil, .after)
+        }
+    }
+
+    func execute(_ dragged: SidebarItem, _ dest: DropDest) {
+        switch (dragged, dest) {
+        case (.tab(let id), .pins(let parent, let index)):
+            if let t = tab(withID: id) { tabs.pin(t, parent: parent, index: index) }
+        case (.tab(let id), .regular(let before)):
+            if let t = tab(withID: id) { tabs.moveTab(t, before: before.flatMap(tab(withID:))) }
+        case (.pin(let id), .pins(let parent, let index)):
+            tabs.pins.move(id, toParent: parent, index: index)
+        case (.pin(let id), .regular(let before)):
+            guard let node = tabs.pins.find(id)?.node, !node.isFolder else { return }
+            let target = before.flatMap(tab(withID:))
+            if let live = tabs.liveTab(forPin: id) {
+                tabs.unpin(node)
+                tabs.moveTab(live, before: target)
+            } else if let url = node.url.flatMap(URL.init(string:)) {
+                // 灰色的釘選拖到一般區：以該網址開成一般 Tab。
+                tabs.unpin(node)
+                let t = tabs.newTab(url: url, activate: false)
+                tabs.moveTab(t, before: target)
+            }
+        default: break
+        }
     }
 
     private func activeChanged() {
         closeFind()
         scheduleSessionSave()
-        for tab in tabs.tabs { rows[tab.id]?.isActive = tab === tabs.activeTab }
+        for tab in tabs.tabs { rows[tab.pinID ?? tab.id]?.isActive = tab === tabs.activeTab }
         if let tab = tabs.activeTab {
             root.card.show(tab.webView)
             syncToolbar(tab)
@@ -158,7 +368,13 @@ final class BrowserWindowController: NSObject, NSTextFieldDelegate, NSWindowDele
 
     private func tabChanged(_ tab: Tab) {
         scheduleSessionSave()
-        rows[tab.id]?.update()
+        rows[tab.pinID ?? tab.id]?.update()
+        if let pid = tab.pinID {
+            var png: Data?
+            if let img = tab.favicon, let tiff = img.tiffRepresentation { png = NSBitmapImageRep(data: tiff)?.representation(using: .png, properties: [:]) }
+            let hasTitle = tab.customTitle?.isEmpty == false || !tab.pageTitle.isEmpty
+            tabs.pins.remember(pid, title: hasTitle ? tab.displayTitle : nil, favicon: png)
+        }
         if tab === tabs.activeTab {
             syncToolbar(tab)
             syncLoading(tab)
@@ -264,6 +480,7 @@ final class BrowserWindowController: NSObject, NSTextFieldDelegate, NSWindowDele
         switch item.action {
         case .open(let url): tabs.newTab(url: url)
         case .switchTab(let tab): tabs.select(tab)
+        case .activatePin(let id): if let n = tabs.pins.find(id)?.node { tabs.activatePin(n) }
         }
         window.makeFirstResponder(tabs.activeTab?.webView)
     }

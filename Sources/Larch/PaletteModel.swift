@@ -2,10 +2,11 @@ import Foundation
 
 /// 覆蓋層裡的一列。標題與副標一律當純文字顯示。
 struct PaletteItem {
-    enum Kind { case openOrSearch, tab, history }
+    enum Kind { case openOrSearch, tab, pin, history }
     enum Action {
         case open(URL)
         case switchTab(Tab)
+        case activatePin(UUID)
     }
     let kind: Kind
     let title: String
@@ -19,7 +20,7 @@ enum PaletteSearch {
     static let maxTabs = 8
     static let maxHistory = 6
 
-    static func results(for query: String, tabs: [Tab], history: HistoryStore?) -> [PaletteItem] {
+    static func results(for query: String, tabs: [Tab], history: HistoryStore?, pins: [PinNode] = []) -> [PaletteItem] {
         let q = query.trimmingCharacters(in: .whitespacesAndNewlines)
         var items: [PaletteItem] = []
 
@@ -38,6 +39,18 @@ enum PaletteSearch {
         scoredTabs.sort { $0.0 != $1.0 ? $0.0 > $1.0 : $0.1 < $1.1 }
         for (_, _, tab) in scoredTabs.prefix(maxTabs) {
             items.append(PaletteItem(kind: .tab, title: tab.displayTitle, subtitle: tab.displayURL?.absoluteString ?? "", action: .switchTab(tab)))
+        }
+
+        // 已關閉（灰色）的釘選項目：選取會用記住的網址重新開啟。
+        var scoredPins: [(Int, Int, PinNode)] = []
+        for (i, n) in pins.enumerated() {
+            if let u = n.url { openURLs.insert(u) }
+            let s = Fuzzy.score(query: q, in: n.title + " " + (n.url ?? ""))
+            if s >= 0 { scoredPins.append((s, i, n)) }
+        }
+        scoredPins.sort { $0.0 != $1.0 ? $0.0 > $1.0 : $0.1 < $1.1 }
+        for (_, _, n) in scoredPins.prefix(maxTabs) {
+            items.append(PaletteItem(kind: .pin, title: n.title, subtitle: n.url ?? "", action: .activatePin(n.id)))
         }
 
         // 沒輸入時不列歷史（只列 Tab）。已開啟的網址不重複出現。

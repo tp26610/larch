@@ -37,6 +37,13 @@ final class AddressBar: NSView {
     required init?(coder: NSCoder) { fatalError() }
 }
 
+/// 拖曳落點的計畫：放開時執行 commit；indicator 決定提示畫在目標列的哪裡。
+struct DropPlan {
+    enum Indicator { case before, after, into }
+    let indicator: Indicator
+    let commit: @MainActor () -> Void
+}
+
 /// 左側欄：導覽按鈕、網址列、Tab 列表、New Tab。背景可拖曳視窗，控制項不行。
 @MainActor
 final class SidebarView: NSView {
@@ -49,9 +56,14 @@ final class SidebarView: NSView {
     private let scrollView = NSScrollView()
     private let listContainer = FlippedView()
     private let stack = NSStackView()
+    private let dropIndicator = DropIndicatorView()
+    private var currentPlan: DropPlan?
+    /// 拖曳時詢問落點：被拖的東西、游標所在列（nil = 清單下方空白）、游標在該列的垂直位置（0 上緣、1 下緣）。
+    var onResolveDrop: ((SidebarItem, SidebarItem?, CGFloat) -> DropPlan?)?
 
     override var mouseDownCanMoveWindow: Bool { true }
     var rowViews: [TabRowView] { stack.arrangedSubviews.compactMap { $0 as? TabRowView } }
+    var sidebarRows: [any SidebarRow] { stack.arrangedSubviews.compactMap { $0 as? any SidebarRow } }
 
     init() {
         super.init(frame: .zero)
@@ -75,6 +87,8 @@ final class SidebarView: NSView {
         scrollView.autohidesScrollers = true
         scrollView.scrollerStyle = .overlay
         listContainer.translatesAutoresizingMaskIntoConstraints = false
+        listContainer.addSubview(dropIndicator)
+        registerForDraggedTypes([SidebarItem.pasteboardType])
 
         downloadButton.isBordered = false
         downloadButton.alignment = .left
@@ -140,7 +154,67 @@ final class SidebarView: NSView {
         downloadButton.toolTip = status.fileURL.path
     }
 
-    func setRows(_ rows: [TabRowView]) {
+    // MARK: 拖曳落點
+
+    private func payload(_ info: NSDraggingInfo) -> SidebarItem? {
+        info.draggingPasteboard.string(forType: SidebarItem.pasteboardType).flatMap(SidebarItem.init(payload:))
+    }
+
+    private func updateDrag(_ info: NSDraggingInfo) -> NSDragOperation {
+        guard let dragged = payload(info) else { return [] }
+        if let event = NSApp.currentEvent { listContainer.autoscroll(with: event) }
+        let y = listContainer.convert(info.draggingLocation, from: nil).y
+        let rows = sidebarRows
+        var over: (any SidebarRow)?
+        var fraction: CGFloat = 0
+        var overFrame = NSRect.zero
+        for row in rows {
+            let f = row.convert(row.bounds, to: listContainer)
+            if y >= f.minY, y < f.maxY { over = row; fraction = (y - f.minY) / f.height; overFrame = f; break }
+        }
+        if over == nil, let first = rows.first, y < first.convert(first.bounds, to: listContainer).minY {
+            over = first; fraction = 0; overFrame = first.convert(first.bounds, to: listContainer)
+        }
+        let target: SidebarItem? = over?.item
+        guard let plan = onResolveDrop?(dragged, target, fraction) else {
+            currentPlan = nil
+            dropIndicator.isHidden = true
+            return []
+        }
+        currentPlan = plan
+        let inset = 8 + CGFloat(over?.depth ?? 0) * FolderRowView.indentStep
+        if let last = rows.last, over == nil {
+            overFrame = last.convert(last.bounds, to: listContainer)
+            dropIndicator.show(.line, frame: NSRect(x: 8, y: overFrame.maxY, width: listContainer.bounds.width - 16, height: 2))
+        } else {
+            switch plan.indicator {
+            case .before: dropIndicator.show(.line, frame: NSRect(x: inset, y: overFrame.minY - 1, width: listContainer.bounds.width - inset - 8, height: 2))
+            case .after: dropIndicator.show(.line, frame: NSRect(x: inset, y: overFrame.maxY - 1, width: listContainer.bounds.width - inset - 8, height: 2))
+            case .into: dropIndicator.show(.outline, frame: overFrame.insetBy(dx: 4, dy: 0))
+            }
+        }
+        return .move
+    }
+
+    override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation { updateDrag(sender) }
+    override func draggingUpdated(_ sender: NSDraggingInfo) -> NSDragOperation { updateDrag(sender) }
+    override func draggingExited(_ sender: NSDraggingInfo?) { dropIndicator.isHidden = true; currentPlan = nil }
+    override func draggingEnded(_ sender: NSDraggingInfo) { dropIndicator.isHidden = true; currentPlan = nil }
+
+    override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
+        guard updateDrag(sender) != [], let plan = currentPlan else { return false }
+        dropIndicator.isHidden = true
+        currentPlan = nil
+        plan.commit()
+        return true
+    }
+
+    func setBackgroundMenu(_ menu: NSMenu) {
+        self.menu = menu
+        listContainer.menu = menu
+    }
+
+    func setRows(_ rows: [NSView]) {
         stack.arrangedSubviews.forEach { $0.removeFromSuperview() }
         for row in rows {
             stack.addArrangedSubview(row)

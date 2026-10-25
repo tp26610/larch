@@ -313,6 +313,7 @@ enum Smoke {
         try await doubleClickChecks(server, app)
         try await trafficLightChecks(server, app)
         try await loadingChecks(server, app)
+        try await pinChecks(server, app)
     }
 }
 
@@ -788,4 +789,215 @@ extension Smoke {
         check("載入結束後按鈕可再次重新整理", !c.sidebar.isShowingStop)
         tm.close(slow); tm.close(idle)
     }
+}
+
+extension Smoke {
+    static func pinChecks(_ server: FixtureServer, _ app: AppDelegate) async throws {
+        print("釘選與資料夾")
+        // PinStore 單元
+        let st = tempStorage("pins")
+        let ps = PinStore(storage: st)
+        let f1 = ps.addFolder(name: "Private", parent: nil)
+        let f2 = ps.addFolder(name: "Ninja", parent: f1.id)
+        let a = ps.addTab(url: server.url("/a"), title: "A", parent: f2.id)
+        let loose = ps.addTab(url: server.url("/b"), title: "B", parent: nil)
+        check("巢狀資料夾與最上層單獨的釘選 Tab", ps.roots.map(\.id) == [f1.id, loose.id] && ps.find(a.id)?.parent?.id == f2.id)
+        check("visible() 深度優先並帶層級", ps.visible().map { "\($0.node.title)\($0.depth)" } == ["Private0", "Ninja1", "A2", "B0"])
+        f2.expanded = false
+        check("收合的資料夾不列出內容", ps.visible().map(\.node.title) == ["Private", "Ninja", "B"])
+        f2.expanded = true
+        check("不能把資料夾放進自己的子孫", !ps.move(f1.id, toParent: f2.id, index: 0) && !ps.move(f1.id, toParent: f1.id, index: 0))
+        check("移動 Tab 到最上層最前面", ps.move(a.id, toParent: nil, index: 0) && ps.roots.first?.id == a.id && ps.find(a.id)?.parent == nil)
+        check("同層往後移的索引修正", ps.move(a.id, toParent: nil, index: 3) && ps.roots.last?.id == a.id)
+        ps.addTab(url: server.url("/c"), title: "C", parent: f2.id)
+        ps.deleteFolder(f2.id)
+        check("刪資料夾：內容移到上一層原位置", ps.find(f2.id) == nil && ps.children(of: f1.id).map(\.title) == ["C"])
+        ps.flush()
+        let again = PinStore(storage: st)
+        check("存檔後重新載入（結構與展開狀態）", again.visible().map { "\($0.node.title)\($0.depth)" } == ps.visible().map { "\($0.node.title)\($0.depth)" })
+        let bad = tempStorage("pins-bad")
+        bad.write(PinStore.fileName, ["version": AnyEncodable(1), "roots": AnyEncodable([PinNode(kind: .tab, title: "evil", url: "file:///etc/passwd"), PinNode(kind: .folder, title: "ok")])])
+        check("非 http(s) 的釘選載入時被丟掉", PinStore(storage: bad).roots.map(\.title) == ["ok"])
+        check("拖曳字串可來回轉換", SidebarItem(payload: SidebarItem.pin(a.id).payload!) == .pin(a.id) && SidebarItem(payload: "x:1") == nil)
+
+        // 視窗層級
+        let sto = tempStorage("pinwin")
+        let c = BrowserWindowController(dataStore: .nonPersistent(), storage: sto, autosave: false)
+        let tm = c.tabs
+        let w = c.window
+        let t1 = tm.newTab(url: server.url("/a"))
+        let t2 = tm.newTab(url: server.url("/b"))
+        _ = await wait { t1.pageTitle == "Page A" && t2.pageTitle == "Page B" }
+        tm.select(t1)
+        check("空白 Tab 不能釘", tm.pin(tm.tabs[0]) == nil)
+        func menuHas(_ title: String, _ key: String) -> Bool { NSApp.mainMenu?.items.contains { $0.submenu?.items.contains { $0.title == title && $0.keyEquivalent == key } == true } == true }
+        check("選單有 ⌘D 釘選與 ⌘⇧N 新資料夾", menuHas("Pin / Unpin Tab", "d") && menuHas("New Folder", "N"))
+        c.togglePinAction()
+        check("釘選目前 Tab（⌘D 的動作）", t1.pinID != nil && tm.pins.roots.count == 1 && tm.pins.roots[0].title == "Page A")
+        func kinds() -> [String] { c.sidebar.sidebarRows.map { switch $0.item { case .divider: return "—"; case .pin: return "pin"; case .tab: return "tab" } } }
+        check("側邊欄順序：釘選、分隔線、一般 Tab", kinds() == ["pin", "—", "tab", "tab"], "\(kinds())")
+        let pinRow = c.sidebar.rowViews.first { $0.pin != nil }!
+        check("釘選列綁定開著的 Tab 且為選中", pinRow.tab === t1 && pinRow.isActive)
+        // 關閉：節點留著變灰
+        tm.close(t1)
+        check("關掉釘選的 Tab：節點保留、列變灰（無 Tab）", tm.pins.roots.count == 1 && tm.liveTab(forPin: tm.pins.roots[0].id) == nil
+              && c.sidebar.rowViews.first { $0.pin != nil }?.tab == nil)
+        check("灰色列仍顯示標題", c.sidebar.rowViews.first { $0.pin != nil }?.titleText == "Page A")
+        // 點灰色列：用記住的網址重新開啟並綁定
+        let node = tm.pins.roots[0]
+        c.sidebar.rowViews.first { $0.pin != nil }?.onSelect?(c.sidebar.rowViews.first { $0.pin != nil }!)
+        let reopened = tm.activeTab
+        check("點灰色列：重新開啟並綁定、成為目前 Tab", reopened?.pinID == node.id && reopened?.displayURL == server.url("/a"))
+        check("重新開啟後載入", await wait { reopened?.pageTitle == "Page A" })
+        // session 還原後仍綁定
+        c.flushPersistence()
+        let snap = SessionStore.load(sto)
+        check("session 存 pinID", snap?.tabs.contains { $0.pinID == node.id.uuidString } == true)
+        c.window.close()
+        let c2 = BrowserWindowController(dataStore: .nonPersistent(), storage: sto, autosave: false)
+        check("重開後釘選仍在並綁定還原的 Tab", c2.tabs.pins.roots.count == 1 && c2.tabs.liveTab(forPin: c2.tabs.pins.roots[0].id) != nil)
+
+        // 資料夾 UI
+        let tm2 = c2.tabs
+        let folder = c2.newFolder()
+        check("⌘⇧N／新增資料夾後進入改名", c2.sidebar.sidebarRows.contains { ($0 as? FolderRowView)?.isEditing == true })
+        let fr = c2.sidebar.sidebarRows.compactMap { $0 as? FolderRowView }.first { $0.node.id == folder.id }!
+        fr.renameField.stringValue = "<b>工作</b>"
+        fr.finishRename(commit: true)
+        check("資料夾改名（純文字）", folder.title == "<b>工作</b>" && fr.titleText == "<b>工作</b>")
+
+        // 拖曳落點與執行
+        let reg = tm2.newTab(url: server.url("/c"))
+        _ = await wait { reg.pageTitle == "頁面 C" }
+        let regRow = c2.sidebar.rowViews.first { $0.tab === reg }!
+        check("拖到資料夾中間 → 放進資料夾", { c2.resolveDrop(.tab(reg.id), over: .pin(folder.id), fraction: 0.5)?.indicator == .into }())
+        c2.resolveDrop(.tab(reg.id), over: .pin(folder.id), fraction: 0.5)?.commit()
+        check("一般 Tab 拖進資料夾 → 釘在裡面", reg.pinID != nil && tm2.pins.find(reg.pinID!)?.parent?.id == folder.id && folder.expanded)
+        check("資料夾內的釘選列縮排一層", c2.sidebar.rowViews.first { $0.tab === reg }?.depth == 1)
+        check("資料夾不能拖進自己", c2.resolveDrop(.pin(folder.id), over: .pin(reg.pinID!), fraction: 0.5) == nil)
+        // 收合
+        fr.onToggle?(folder)
+        check("收合後內容列消失", !c2.sidebar.rowViews.contains { $0.tab === reg })
+        fr.onToggle?(folder)
+        check("再展開內容列回來", c2.sidebar.rowViews.contains { $0.tab === reg })
+        // 資料夾內釘選拖到一般區 → 取消釘選
+        let regs = tm2.tabs.filter { $0.pinID == nil }
+        c2.resolveDrop(.pin(reg.pinID!), over: .tab(regs[0].id), fraction: 0.1)?.commit()
+        check("釘選拖到一般區 → 取消釘選且排在目標前", reg.pinID == nil && tm2.tabs.filter { $0.pinID == nil }.first === reg)
+        // 一般區重排
+        let order = tm2.tabs.filter { $0.pinID == nil }
+        c2.resolveDrop(.tab(order[0].id), over: .tab(order.last!.id), fraction: 0.9)?.commit()
+        check("一般區拖到最後面", tm2.tabs.filter { $0.pinID == nil }.last === order[0])
+        // 分隔線：一般 Tab → 釘到最上層末尾；釘選 → 取消
+        let last = tm2.tabs.filter { $0.pinID == nil }.last!
+        c2.resolveDrop(.tab(last.id), over: .divider, fraction: 0.5)?.commit()
+        check("拖到分隔線 → 釘到最上層（單獨一個 Tab）", last.pinID != nil && tm2.pins.find(last.pinID!)?.parent == nil && tm2.pins.roots.last?.id == last.pinID)
+        c2.resolveDrop(.pin(last.pinID!), over: .divider, fraction: 0.5)?.commit()
+        check("釘選拖到分隔線 → 取消釘選", last.pinID == nil)
+        check("資料夾不能放到一般區", c2.resolveDrop(.pin(folder.id), over: .tab(regs[0].id), fraction: 0.1) == nil)
+        // 右鍵「Unpin」與灰色釘選拖到一般區
+        let gray = tm2.pins.addTab(url: server.url("/b"), title: "灰", parent: nil)
+        let before = tm2.tabs.count
+        c2.resolveDrop(.pin(gray.id), over: .divider, fraction: 0.5)?.commit()
+        check("灰色釘選拖到一般區 → 開成一般 Tab（節點移除）", tm2.pins.find(gray.id) == nil && tm2.tabs.count == before + 1)
+        // 命令列找得到灰色釘選
+        let g2 = tm2.pins.addTab(url: server.url("/hist-pin"), title: "Zebra Pinned", parent: nil)
+        c2.openPalette(prefill: "zebra pinned")
+        check("⌘T 命令列列出灰色釘選", c2.root.palette.items.contains { if case .activatePin(let id) = $0.action { return id == g2.id } else { return false } })
+        if let i = c2.root.palette.items.firstIndex(where: { $0.kind == .pin }) { c2.root.palette.pick(i) }
+        check("選取灰色釘選 → 開啟並綁定", tm2.activeTab?.pinID == g2.id)
+        c2.window.close()
+        try await dragGeometryChecks(server)
+    }
+
+    /// 真實的 draggingUpdated / performDragOperation 路徑（以假的 NSDraggingInfo 餵進去）。
+    static func dragGeometryChecks(_ server: FixtureServer) async throws {
+        let c = BrowserWindowController(dataStore: .nonPersistent(), storage: tempStorage("drag"), autosave: false)
+        let tm = c.tabs
+        let folder = tm.pins.addFolder(name: "F", parent: nil)
+        let t = tm.newTab(url: server.url("/a"))
+        _ = await wait { t.pageTitle == "Page A" }
+        c.window.setContentSize(NSSize(width: 1000, height: 700))
+        c.root.layoutSubtreeIfNeeded()
+        c.sidebar.layoutSubtreeIfNeeded()
+        let rows = c.sidebar.sidebarRows
+        guard let fRow = rows.first(where: { $0.item == .pin(folder.id) }), let tRow = rows.first(where: { $0.item == .tab(t.id) }) else {
+            check("拖曳測試前置：資料夾列與 Tab 列存在", false); return
+        }
+        func drag(_ item: SidebarItem, onto row: NSView, fraction f: CGFloat) -> NSDragOperation {
+            let pb = NSPasteboard(name: NSPasteboard.Name("larch-test-\(UUID().uuidString)"))
+            pb.clearContents()
+            pb.setString(item.payload!, forType: SidebarItem.pasteboardType)
+            let local = NSPoint(x: row.bounds.midX, y: row.bounds.height * f)
+            let inWindow = row.convert(local, to: nil)
+            return c.sidebar.draggingUpdated(FakeDraggingInfo(pasteboard: pb, location: inWindow))
+        }
+        check("draggingUpdated：Tab 拖到資料夾中間 → 允許", drag(.tab(t.id), onto: fRow, fraction: 0.5) == .move)
+        check("draggingUpdated：資料夾拖到一般 Tab → 拒絕", drag(.pin(folder.id), onto: tRow, fraction: 0.5) == [])
+        let pb = NSPasteboard(name: NSPasteboard.Name("larch-test-\(UUID().uuidString)"))
+        pb.clearContents()
+        pb.setString(SidebarItem.tab(t.id).payload!, forType: SidebarItem.pasteboardType)
+        let loc = fRow.convert(NSPoint(x: fRow.bounds.midX, y: fRow.bounds.height * 0.5), to: nil)
+        let info = FakeDraggingInfo(pasteboard: pb, location: loc)
+        _ = c.sidebar.draggingUpdated(info)
+        check("performDragOperation 執行放入資料夾", c.sidebar.performDragOperation(info) && t.pinID != nil && tm.pins.find(t.pinID!)?.parent?.id == folder.id)
+        if let dir = ProcessInfo.processInfo.environment["LARCH_SHOT_DIR"] { try? await sidebarShot(server, dir) }
+        c.window.close()
+    }
+
+    /// 截圖用（LARCH_SHOT_DIR 指定資料夾）：在 smoke 的暫存資料中做出像 Arc 的釘選樹並存 PNG。
+    static func sidebarShot(_ server: FixtureServer, _ dir: String) async throws {
+        let c = BrowserWindowController(dataStore: .nonPersistent(), storage: tempStorage("shot"), autosave: false)
+        let ps = c.tabs.pins
+        func tab(_ title: String, _ path: String, in parent: PinNode?) { ps.addTab(url: server.url(path), title: title, parent: parent?.id) }
+        let pr = ps.addFolder(name: "Pull Requests", parent: nil)
+        tab("10/24 名單與戰績", "/a", in: pr)
+        let priv = ps.addFolder(name: "Private", parent: nil)
+        tab("固定支出", "/a", in: priv)
+        let ninja = ps.addFolder(name: "忍者必須死", parent: priv.id)
+        tab("Ninja Must Die - Project Editor", "/b", in: ninja)
+        tab("家族戰出席紀錄", "/c", in: ninja)
+        ps.addFolder(name: "FamAcc", parent: priv.id)
+        ps.addFolder(name: "Hantek", parent: nil)
+        tab("edclub: Personalized Learning Paths", "/a", in: nil)
+        let live = c.tabs.newTab(url: server.url("/b"))
+        _ = await wait { live.pageTitle == "Page B" }
+        c.tabs.pin(live, parent: ninja.id, index: 2)
+        c.tabs.newTab(url: server.url("/c"))
+        c.window.setContentSize(NSSize(width: 900, height: 620))
+        try? await Task.sleep(nanoseconds: 400_000_000)
+        c.root.layoutSubtreeIfNeeded()
+        if let rep = c.root.bitmapImageRepForCachingDisplay(in: c.root.bounds) {
+            c.root.cacheDisplay(in: c.root.bounds, to: rep)
+            try? rep.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: dir + "/pins.png"))
+        }
+        c.window.close()
+    }
+}
+
+struct AnyEncodable: Encodable {
+    let value: Encodable
+    init(_ v: Encodable) { value = v }
+    func encode(to encoder: Encoder) throws { try value.encode(to: encoder) }
+}
+
+final class FakeDraggingInfo: NSObject, NSDraggingInfo {
+    let pasteboard: NSPasteboard
+    let location: NSPoint
+    init(pasteboard: NSPasteboard, location: NSPoint) { self.pasteboard = pasteboard; self.location = location }
+    var draggingDestinationWindow: NSWindow? { nil }
+    var draggingSourceOperationMask: NSDragOperation { .move }
+    var draggingLocation: NSPoint { location }
+    var draggedImageLocation: NSPoint { location }
+    var draggedImage: NSImage? { nil }
+    var draggingPasteboard: NSPasteboard { pasteboard }
+    var draggingSource: Any? { nil }
+    var draggingSequenceNumber: Int { 0 }
+    var draggingFormation: NSDraggingFormation = .default
+    var animatesToDestination = false
+    var numberOfValidItemsForDrop = 1
+    var springLoadingHighlight: NSSpringLoadingHighlight { .none }
+    func slideDraggedImage(to screenPoint: NSPoint) {}
+    func enumerateDraggingItems(options enumOpts: NSDraggingItemEnumerationOptions = [], for view: NSView?, classes classArray: [AnyClass], searchOptions: [NSPasteboard.ReadingOptionKey: Any] = [:], using block: @escaping (NSDraggingItem, Int, UnsafeMutablePointer<ObjCBool>) -> Void) {}
+    func resetSpringLoading() {}
 }

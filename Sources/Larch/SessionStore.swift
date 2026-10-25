@@ -5,6 +5,7 @@ struct SessionSnapshot: Codable, Equatable {
     struct Entry: Codable, Equatable {
         var url: String
         var customTitle: String?
+        var pinID: String?
     }
     var version = 1
     var tabs: [Entry]
@@ -29,7 +30,7 @@ enum SessionStore {
         for tab in tabs.tabs {
             guard let url = tab.displayURL, InputNormalizer.isHTTP(url) else { continue }
             if tab === tabs.activeTab { active = entries.count }
-            entries.append(.init(url: url.absoluteString, customTitle: tab.customTitle))
+            entries.append(.init(url: url.absoluteString, customTitle: tab.customTitle, pinID: tab.pinID?.uuidString))
         }
         return SessionSnapshot(tabs: entries, active: active)
     }
