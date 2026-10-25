@@ -49,7 +49,7 @@ final class TabManager {
 
     func close(_ tab: Tab) {
         guard let index = tabs.firstIndex(where: { $0 === tab }) else { return }
-        if let url = tab.url, InputNormalizer.isHTTP(url) {
+        if let url = tab.displayURL, InputNormalizer.isHTTP(url) {
             closedStack.append(ClosedTab(url: url, customTitle: tab.customTitle))
             if closedStack.count > Self.maxClosed { closedStack.removeFirst(closedStack.count - Self.maxClosed) }
         }

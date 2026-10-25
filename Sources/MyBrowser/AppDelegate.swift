@@ -12,7 +12,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.mainMenu = buildMenu()
         // smoke 用暫存的 data store，不污染真實 cookie。
         let store: WKWebsiteDataStore = smoke ? .nonPersistent() : .default()
-        controller = BrowserWindowController(dataStore: store, autosave: !smoke)
+        let storage = smoke ? Storage(directory: FileManager.default.temporaryDirectory.appendingPathComponent("mybrowser-smoke-\(getpid())"))
+                            : .standard
+        controller = BrowserWindowController(dataStore: store, storage: storage, autosave: !smoke)
         NSApp.activate(ignoringOtherApps: true)
         // 命令列給的網址在新分頁開啟（open -a ... --args URL）。
         for arg in CommandLine.arguments.dropFirst() {
@@ -25,6 +27,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             Task { @MainActor in await Smoke.run(self) }
         }
     }
+
+    func applicationWillTerminate(_ notification: Notification) { controller?.flushPersistence() }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
 

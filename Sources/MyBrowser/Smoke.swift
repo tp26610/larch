@@ -269,5 +269,46 @@ enum Smoke {
         let before = tm.tabs.count
         check("⌘T 新增分頁", press("t", .command, in: c.window) && tm.tabs.count == before + 1)
         check("⌘W 關閉分頁", press("w", .command, in: c.window) && tm.tabs.count == before)
+
+        try await sessionChecks(server, app)
+    }
+}
+
+extension Smoke {
+    static func tempStorage(_ tag: String) -> Storage {
+        Storage(directory: FileManager.default.temporaryDirectory.appendingPathComponent("mybrowser-\(tag)-\(UUID().uuidString)"))
+    }
+
+    static func sessionChecks(_ server: FixtureServer, _ app: AppDelegate) async throws {
+        print("Session restore")
+        let storage = tempStorage("session")
+        let c2 = BrowserWindowController(dataStore: .nonPersistent(), storage: storage, autosave: false)
+        check("無存檔時開一個空白分頁", c2.tabs.tabs.count == 1 && c2.tabs.activeTab?.displayURL == nil)
+        let a = c2.tabs.newTab(url: server.url("/a"), customTitle: "第一")
+        let b = c2.tabs.newTab(url: server.url("/b"))
+        c2.tabs.newTab(url: server.url("/c"))
+        c2.tabs.select(b)
+        _ = a
+        c2.flushPersistence()
+        let snap = SessionStore.load(storage)
+        check("存檔只含 http(s) 分頁，順序與選中正確", snap?.tabs.map(\.url) == [server.url("/a"), server.url("/b"), server.url("/c")].map(\.absoluteString)
+              && snap?.active == 1, "\(String(describing: snap))")
+        check("自訂名稱有存", snap?.tabs.first?.customTitle == "第一")
+        c2.window.close()
+        let c3 = BrowserWindowController(dataStore: .nonPersistent(), storage: storage, autosave: false)
+        check("重開還原三個 Tab", c3.tabs.tabs.count == 3)
+        check("還原選中的 Tab 與自訂名稱", c3.tabs.activeTab?.displayURL == server.url("/b") && c3.tabs.tabs[0].customTitle == "第一")
+        check("還原後會載入頁面", await wait { c3.tabs.activeTab?.pageTitle == "Page B" })
+        c3.window.close()
+
+        let bad = tempStorage("bad")
+        try FileManager.default.createDirectory(at: bad.directory, withIntermediateDirectories: true)
+        try Data("{ not json".utf8).write(to: bad.directory.appendingPathComponent(SessionStore.fileName))
+        let c4 = BrowserWindowController(dataStore: .nonPersistent(), storage: bad, autosave: false)
+        check("壞檔不影響啟動", c4.tabs.tabs.count == 1)
+        c4.window.close()
+        let evil = tempStorage("evil")
+        evil.write(SessionStore.fileName, SessionSnapshot(tabs: [.init(url: "file:///etc/passwd", customTitle: nil), .init(url: "javascript://x", customTitle: nil)], active: 5))
+        check("非 http(s) 不還原", SessionStore.load(evil) == nil)
     }
 }

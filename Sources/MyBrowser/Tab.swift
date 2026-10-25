@@ -15,7 +15,11 @@ final class Tab: NSObject, WKNavigationDelegate, WKUIDelegate {
     private var faviconTask: URLSessionDataTask?
 
     var pageTitle: String { webView.title ?? "" }
+    /// 使用者要求載入的網址；頁面還沒 commit 前 webView.url 是 nil，session 存檔需要它。
+    private(set) var requestedURL: URL?
     var url: URL? { webView.url }
+    /// UI 與 session 看到的網址。
+    var displayURL: URL? { url ?? requestedURL }
     var isLoading: Bool { webView.isLoading }
 
     var displayTitle: String {
@@ -46,6 +50,7 @@ final class Tab: NSObject, WKNavigationDelegate, WKUIDelegate {
     }
 
     func load(_ url: URL) {
+        requestedURL = url
         webView.load(URLRequest(url: url))
     }
 
@@ -71,6 +76,7 @@ final class Tab: NSObject, WKNavigationDelegate, WKUIDelegate {
     }
 
     func webView(_ webView: WKWebView, didCommit navigation: WKNavigation!) {
+        requestedURL = nil
         favicon = nil
         notify()
     }

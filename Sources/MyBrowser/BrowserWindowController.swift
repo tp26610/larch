@@ -8,11 +8,15 @@ final class BrowserWindowController: NSObject, NSTextFieldDelegate, NSWindowDele
     let root = RootView()
     let tabs: TabManager
     private var rows: [UUID: TabRowView] = [:]
+    let storage: Storage
+    private let sessionSaver = Debouncer()
+    private var restoring = false
 
     var sidebar: SidebarView { root.sidebar }
     var addressField: NSTextField { root.sidebar.addressBar.field }
 
-    init(dataStore: WKWebsiteDataStore, autosave: Bool) {
+    init(dataStore: WKWebsiteDataStore, storage: Storage, autosave: Bool) {
+        self.storage = storage
         tabs = TabManager(dataStore: dataStore)
         window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1280, height: 820),
                           styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
@@ -43,14 +47,46 @@ final class BrowserWindowController: NSObject, NSTextFieldDelegate, NSWindowDele
         tabs.onStructureChange = { [weak self] in self?.rebuildRows() }
         tabs.onActiveChange = { [weak self] in self?.activeChanged() }
         tabs.onTabChange = { [weak self] in self?.tabChanged($0) }
-        tabs.newTab()
+        restoreSession()
         window.makeKeyAndOrderFront(nil)
         focusAddress()
+    }
+
+    // MARK: Session
+
+    private func restoreSession() {
+        restoring = true
+        defer { restoring = false }
+        if let snap = SessionStore.load(storage) {
+            var active: Tab?
+            for (i, entry) in snap.tabs.enumerated() {
+                let tab = tabs.newTab(url: URL(string: entry.url), customTitle: entry.customTitle, activate: false)
+                if i == snap.active { active = tab }
+            }
+            if let active { tabs.select(active) }
+        } else {
+            tabs.newTab()
+        }
+    }
+
+    private func scheduleSessionSave() {
+        guard !restoring else { return }
+        sessionSaver.schedule { [weak self] in self?.saveSession() }
+    }
+
+    private func saveSession() {
+        storage.write(SessionStore.fileName, SessionStore.snapshot(of: tabs))
+    }
+
+    /// 結束前把尚未寫出的狀態存檔。
+    func flushPersistence() {
+        sessionSaver.flush { saveSession() }
     }
 
     // MARK: 同步畫面
 
     private func rebuildRows() {
+        scheduleSessionSave()
         let live = Set(tabs.tabs.map(\.id))
         rows = rows.filter { live.contains($0.key) }
         var ordered: [TabRowView] = []
@@ -75,6 +111,7 @@ final class BrowserWindowController: NSObject, NSTextFieldDelegate, NSWindowDele
     }
 
     private func activeChanged() {
+        scheduleSessionSave()
         for tab in tabs.tabs { rows[tab.id]?.isActive = tab === tabs.activeTab }
         if let tab = tabs.activeTab {
             root.card.show(tab.webView)
@@ -87,6 +124,7 @@ final class BrowserWindowController: NSObject, NSTextFieldDelegate, NSWindowDele
     }
 
     private func tabChanged(_ tab: Tab) {
+        scheduleSessionSave()
         rows[tab.id]?.update()
         if tab === tabs.activeTab {
             syncToolbar(tab)
@@ -98,7 +136,7 @@ final class BrowserWindowController: NSObject, NSTextFieldDelegate, NSWindowDele
         sidebar.backButton.isEnabled = tab.webView.canGoBack
         sidebar.forwardButton.isEnabled = tab.webView.canGoForward
         if addressField.currentEditor() == nil {
-            addressField.stringValue = tab.url?.absoluteString ?? ""
+            addressField.stringValue = tab.displayURL?.absoluteString ?? ""
         }
     }
 
@@ -159,7 +197,7 @@ final class BrowserWindowController: NSObject, NSTextFieldDelegate, NSWindowDele
         }
         if selector == #selector(NSResponder.cancelOperation(_:)) {
             if let tab = tabs.activeTab {
-                addressField.stringValue = tab.url?.absoluteString ?? ""
+                addressField.stringValue = tab.displayURL?.absoluteString ?? ""
                 window.makeFirstResponder(tab.webView)
             }
             return true
