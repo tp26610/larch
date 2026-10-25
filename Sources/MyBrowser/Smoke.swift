@@ -69,7 +69,8 @@ final class FixtureServer: @unchecked Sendable {
         case "/c": return ("text/html; charset=utf-8", html("頁面 C"), 0)
         case "/slow": return ("text/html; charset=utf-8", html("Slow Page"), 1.5)
         case "/text": return ("text/html; charset=utf-8", html("Text Page", "<p>alpha needle beta</p>"), 0)
-        case "/popup": return ("text/html; charset=utf-8", html("Popup Opener", "<a id=\"l\" href=\"/b\" target=\"_blank\">b</a>"), 0)
+        case "/popup": return ("text/html; charset=utf-8", html("Popup Opener", "<a id=\"l\" href=\"/b\" target=\"_blank\">b</a><a id=\"n\" href=\"/child\" target=\"pop\">c</a><script>addEventListener('message',e=>{document.title='got:'+e.data})</script>"), 0)
+        case "/child": return ("text/html; charset=utf-8", html("Child", "<script>if(window.opener){window.opener.postMessage('hi','*');window.close()}</script>"), 0)
         case "/xss": return ("text/html; charset=utf-8", html("<img src=x onerror=document.title='pwned'>"), 0)
         case "/file": return ("text/plain", Data("hello download".utf8), 0)
         case "/icon.png":
@@ -260,7 +261,15 @@ enum Smoke {
         let po = tm.newTab(url: server.url("/popup"))
         _ = await wait { po.pageTitle == "Popup Opener" }
         _ = try? await po.webView.evaluateJavaScript("document.getElementById('l').click()")
-        check("target=_blank 留在同一個 view", await wait { po.pageTitle == "Page B" } && tm.tabs.count >= 1)
+        let nTabs = tm.tabs.count
+        check("target=_blank 開新 Tab（插在來源之後並切過去）", await wait { tm.activeTab?.pageTitle == "Page B" } && tm.tabs.count == nTabs + 1
+              && tm.tabs[(tm.tabs.firstIndex { $0 === po } ?? 0) + 1] === tm.activeTab)
+        let popTab = tm.activeTab!
+        _ = try? await po.webView.evaluateJavaScript("document.getElementById('n').click()")
+        check("具名彈出視窗開新 Tab 並可 postMessage 給 opener 後 window.close", await wait { po.pageTitle == "got:hi" }, "\(po.pageTitle) tabs=\(tm.tabs.map(\.pageTitle))")
+        check("window.close() 關掉彈出 Tab", await wait { !tm.tabs.contains { $0.pageTitle == "Child" } })
+        tm.close(popTab)
+        tm.select(po)
         c.submitAddress("file:///etc/hosts")
         check("file: 被拒絕", po.url?.scheme == "http")
 

@@ -34,13 +34,16 @@ final class TabManager {
     }
 
     @discardableResult
-    func newTab(url: URL? = nil, customTitle: String? = nil, activate: Bool = true) -> Tab {
-        let tab = Tab(configuration: configuration)
+    func newTab(url: URL? = nil, customTitle: String? = nil, activate: Bool = true,
+                popupConfiguration: WKWebViewConfiguration? = nil, after opener: Tab? = nil) -> Tab {
+        let tab = Tab(configuration: popupConfiguration ?? configuration)
         tab.customTitle = customTitle
         tab.downloads = downloads
         tab.zoomStore = zoom
         tab.onChange = { [weak self] in self?.onTabChange?($0) }
-        tabs.append(tab)
+        tab.onPopup = { [weak self] config, opener in self?.newTab(popupConfiguration: config, after: opener) }
+        tab.onRequestClose = { [weak self] tab in self?.close(tab) }
+        if let opener, let i = tabs.firstIndex(where: { $0 === opener }) { tabs.insert(tab, at: i + 1) } else { tabs.append(tab) }
         onStructureChange?()
         if let url { tab.load(url) }
         if activate || activeTab == nil { select(tab) }
@@ -63,7 +66,9 @@ final class TabManager {
         tab.teardown()
         if activeTab === tab {
             activeTab = nil
-            if let next = tabs.isEmpty ? nil : tabs[min(index, tabs.count - 1)] {
+            if let back = tab.opener, tabs.contains(where: { $0 === back }) {
+                activeTab = back
+            } else if let next = tabs.isEmpty ? nil : tabs[min(index, tabs.count - 1)] {
                 activeTab = next
             }
         }

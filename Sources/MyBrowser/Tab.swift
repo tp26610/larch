@@ -11,6 +11,11 @@ final class Tab: NSObject, WKNavigationDelegate, WKUIDelegate {
     private(set) var favicon: NSImage?
     var onChange: ((Tab) -> Void)?
     weak var downloads: DownloadManager?
+    /// window.open / target=_blank：回傳新 Tab（以 WebKit 給的 configuration 建立，保留 opener 關係）。
+    var onPopup: ((WKWebViewConfiguration, Tab) -> Tab?)?
+    /// 網頁呼叫 window.close()。
+    weak var opener: Tab?
+    var onRequestClose: ((Tab) -> Void)?
     var zoomStore: ZoomStore?
 
     private var observations: [NSKeyValueObservation] = []
@@ -148,13 +153,16 @@ final class Tab: NSObject, WKNavigationDelegate, WKUIDelegate {
         loadFavicon()
     }
 
-    /// 登入流程常用彈出視窗；全部留在同一個 view 內處理。
+    /// 彈出視窗（含登入流程）開成新 Tab，並使用 WebKit 給的 configuration，window.opener / postMessage 才會正常。
     func webView(_ webView: WKWebView, createWebViewWith configuration: WKWebViewConfiguration,
                  for navigationAction: WKNavigationAction, windowFeatures: WKWindowFeatures) -> WKWebView? {
-        if navigationAction.targetFrame == nil, InputNormalizer.isHTTP(navigationAction.request.url) {
-            webView.load(navigationAction.request)
-        }
-        return nil
+        let url = navigationAction.request.url
+        guard url == nil || InputNormalizer.isHTTP(url) || url?.scheme == "about" else { return nil }
+        return onPopup?(configuration, self)?.webView
+    }
+
+    func webViewDidClose(_ webView: WKWebView) {
+        onRequestClose?(self)
     }
 
     // MARK: Permissions：預設全拒
