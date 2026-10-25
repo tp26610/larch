@@ -849,11 +849,12 @@ extension Smoke {
         let open0 = tm.pins.roots[0]
         tm.activatePin(open0)
         let openRow = c.sidebar.rowViews.first { $0.pin != nil }!
-        check("開著的釘選列 ✕ 提示是 Close and Keep Pinned", openRow.closeToolTip == "Close and Keep Pinned")
+        check("開著的釘選列 ✕ 提示是 Close and Keep Pinned、圖示是「−」", openRow.closeToolTip == "Close and Keep Pinned" && openRow.closeIconName == "Close and keep pinned")
         openRow.onClose?(openRow)
         check("第一下 ✕：關閉 Tab、釘選保留（灰色）", tm.pins.roots.count == 1 && tm.liveTab(forPin: open0.id) == nil)
         let grayRow2 = c.sidebar.rowViews.first { $0.pin != nil }!
         grayRow2.onClose?(grayRow2)
+        check("灰色列圖示換回「✕」", grayRow2.closeIconName == "Close tab")
         check("第二下 ✕：移除釘選", tm.pins.roots.isEmpty && !c.sidebar.rowViews.contains { $0.pin != nil })
         tm.pins.addTab(url: server.url("/a"), title: "Page A", parent: nil)
         // 點灰色列：用記住的網址重新開啟並綁定

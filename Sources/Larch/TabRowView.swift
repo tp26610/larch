@@ -25,6 +25,7 @@ final class TabRowView: NSView, NSTextFieldDelegate, SidebarRow {
     private var finishedEditing = true
 
     var isEditing: Bool { !finishedEditing }
+    var closeIconName: String { closeButton.image?.accessibilityDescription ?? "" }
     var closeToolTip: String? { closeButton.toolTip }
     var isShowingSpinner: Bool { !spinner.isHidden }
     var titleText: String { titleLabel.stringValue }
@@ -150,6 +151,8 @@ final class TabRowView: NSView, NSTextFieldDelegate, SidebarRow {
         layer?.backgroundColor = (isActive ? Theme.active : hovering ? Theme.hover : NSColor.clear).cgColor
         closeButton.alphaValue = (isActive || hovering) ? 0.8 : 0
         // 釘選列：第一下關閉 Tab（保留釘選），變灰後第二下才移除釘選（仿 Arc）。
+        let keepPinned = pin != nil && tab != nil
+        closeButton.image = NSImage(systemSymbolName: keepPinned ? "minus" : "xmark", accessibilityDescription: keepPinned ? "Close and keep pinned" : "Close tab")
         closeButton.toolTip = pin == nil ? "Close Tab" : tab != nil ? "Close and Keep Pinned" : "Remove Pin"
     }
 
