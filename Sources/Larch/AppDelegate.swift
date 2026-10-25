@@ -10,6 +10,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.mainMenu = buildMenu()
+        // `swift run` 不是 .app，沒有 Info.plist 的圖示；從專案目錄補上 Dock 圖示（打包後走 Bundle，不會進來）。
+        if Bundle.main.bundlePath.hasSuffix(".app") == false,
+           let icon = NSImage(contentsOfFile: FileManager.default.currentDirectoryPath + "/assets/AppIcon.icns") {
+            NSApp.applicationIconImage = icon
+        }
         // smoke 用暫存的 data store，不污染真實 cookie。
         let store: WKWebsiteDataStore = smoke ? .nonPersistent() : .default()
         let storage = smoke ? Storage(directory: FileManager.default.temporaryDirectory.appendingPathComponent("larch-smoke-\(getpid())"))
