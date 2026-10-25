@@ -26,6 +26,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if let i = CommandLine.arguments.firstIndex(of: "--open-palette") {
             controller.openPalette(prefill: i + 1 < CommandLine.arguments.count ? CommandLine.arguments[i + 1] : "")
         }
+        if CommandLine.arguments.contains("--hide-sidebar") { controller.toggleSidebar() }
         if let i = CommandLine.arguments.firstIndex(of: "--live-check"), i + 2 < CommandLine.arguments.count {
             let url = CommandLine.arguments[i + 1], out = CommandLine.arguments[i + 2]
             Task { @MainActor in await Smoke.liveCheck(self, url: url, outPrefix: out) }

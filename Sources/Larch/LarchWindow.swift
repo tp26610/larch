@@ -50,6 +50,34 @@ final class LarchWindow: NSWindow {
         return super.performKeyEquivalent(with: event)
     }
 
+    // MARK: 紅綠燈（跟著側邊欄收合）
+
+    private static let buttonTypes: [NSWindow.ButtonType] = [.closeButton, .miniaturizeButton, .zoomButton]
+    private(set) var trafficLightsShown = true
+
+    var trafficLightButtons: [NSButton] { Self.buttonTypes.compactMap { standardWindowButton($0) } }
+
+    /// 顯示/隱藏三顆按鈕（淡入淡出）。全螢幕時由系統處理，這裡一律還原成顯示。
+    func setTrafficLights(visible: Bool, animated: Bool = true) {
+        let show = visible || styleMask.contains(.fullScreen)
+        trafficLightsShown = show
+        for b in trafficLightButtons {
+            if show { b.isHidden = false }
+            if animated, !styleMask.contains(.fullScreen) {
+                NSAnimationContext.runAnimationGroup({ ctx in
+                    ctx.duration = 0.15
+                    b.animator().alphaValue = show ? 1 : 0
+                }, completionHandler: { [weak self, weak b] in
+                    // 動畫期間狀態可能又變了，以最新目標為準。
+                    if let self, !self.trafficLightsShown { b?.isHidden = true }
+                })
+            } else {
+                b.alphaValue = show ? 1 : 0
+                b.isHidden = !show
+            }
+        }
+    }
+
     override func sendEvent(_ event: NSEvent) {
         if event.type == .leftMouseDown, event.clickCount == 2, MainActor.assumeIsolated({ handleDoubleClick(at: event.locationInWindow) }) { return }
         super.sendEvent(event)

@@ -311,6 +311,7 @@ enum Smoke {
         try await closeKeyChecks(server, app)
         try await paletteChecks(server, app)
         try await doubleClickChecks(server, app)
+        try await trafficLightChecks(server, app)
     }
 }
 
@@ -656,6 +657,43 @@ extension Smoke {
         let center = c.root.convert(NSPoint(x: card.midX, y: 12), to: nil)
         check("開啟時整個內容區的 hit-test 被覆蓋層攔下", c.root.hitTest(c.root.convert(center, from: nil)).map { $0 === p || $0.isDescendant(of: p) } == true)
         p.dismiss()
+    }
+
+    static func trafficLightChecks(_ server: FixtureServer, _ app: AppDelegate) async throws {
+        print("紅綠燈跟著側邊欄")
+        let c = app.controller!
+        guard let w = c.window as? LarchWindow else { check("視窗是 LarchWindow", false); return }
+        func buttonsHidden() -> Bool { w.trafficLightButtons.allSatisfy { $0.isHidden } }
+        func buttonsVisible() -> Bool { w.trafficLightButtons.count == 3 && w.trafficLightButtons.allSatisfy { !$0.isHidden && $0.alphaValue > 0.99 } }
+        if !c.root.sidebarVisible { c.toggleSidebar() }
+        check("側邊欄顯示時三顆按鈕都顯示", buttonsVisible())
+        // 新視窗啟動時與側邊欄狀態一致。
+        let c2 = BrowserWindowController(dataStore: .nonPersistent(), storage: tempStorage("tl"), autosave: false)
+        check("新視窗啟動時按鈕顯示（側邊欄預設顯示）", (c2.window as! LarchWindow).trafficLightButtons.allSatisfy { !$0.isHidden })
+        c2.window.close()
+        let pressed = press("s", .command, in: w)
+        let hid = await wait(2) { buttonsHidden() }
+        check("⌘S 隱藏側邊欄 → 按鈕一起隱藏", pressed && !c.root.sidebarVisible && hid)
+        c.root.layoutSubtreeIfNeeded()
+        let rect = c.root.cornerRect
+        check("感應區約 90x40 位於左上角", rect.width == 90 && rect.height == 40 && rect.minX == 0 && rect.maxY == c.root.bounds.height)
+        let cardHit = c.root.hitTest(c.root.convert(NSPoint(x: 40, y: rect.midY), from: nil)) ?? c.root
+        check("感應區內 hit 到網頁卡片、不被攔截且不可拖曳", !cardHit.mouseDownCanMoveWindow && cardHit !== c.root)
+        c.root.onCornerHover?(true)
+        check("隱藏期間滑鼠進入左上角 → 按鈕淡入顯示", await wait(2) { buttonsVisible() })
+        c.root.onCornerHover?(false)
+        check("滑鼠離開 → 再隱藏", await wait(2) { buttonsHidden() })
+        send("s", .control, in: w)
+        let shown = await wait(2) { buttonsVisible() }
+        check("Ctrl+S 展開 → 按鈕一起顯示", c.root.sidebarVisible && shown)
+        send("s", .control, in: w)
+        check("Ctrl+S 再收 → 按鈕隱藏", await wait(2) { buttonsHidden() })
+        c.openPalette(prefill: nil)
+        c.root.palette.dismiss()
+        c.focusAddress()
+        let shown2 = await wait(2) { buttonsVisible() }
+        check("⌘L 在側邊欄隱藏時展開側邊欄 → 按鈕顯示", c.root.sidebarVisible && shown2)
+        check("真實滑鼠進出事件走 tracking area 的 owner 為 RootView", c.root.trackingAreas.contains { $0.owner === c.root && $0.rect == c.root.cornerRect })
     }
 
     static func doubleClickChecks(_ server: FixtureServer, _ app: AppDelegate) async throws {

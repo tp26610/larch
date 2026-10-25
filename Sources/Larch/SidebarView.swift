@@ -159,7 +159,25 @@ final class RootView: NSView {
     let card = CardView()
     let findBar = FindBar()
     let palette = CommandPaletteView()
-    var sidebarVisible = true { didSet { needsLayout = true } }
+    var sidebarVisible = true { didSet { needsLayout = true; if oldValue != sidebarVisible { onSidebarVisibilityChange?(sidebarVisible) } } }
+    var onSidebarVisibilityChange: ((Bool) -> Void)?
+    /// 滑鼠進出左上角感應區（供側邊欄隱藏時暫時顯示紅綠燈）。
+    var onCornerHover: ((Bool) -> Void)?
+    static let cornerSize = NSSize(width: 90, height: 40)
+    private var cornerArea: NSTrackingArea?
+    var cornerRect: NSRect { NSRect(x: 0, y: bounds.height - Self.cornerSize.height, width: Self.cornerSize.width, height: Self.cornerSize.height) }
+
+    // tracking area 不攔截事件，網頁卡片的點擊與捲動不受影響。
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let cornerArea { removeTrackingArea(cornerArea) }
+        let area = NSTrackingArea(rect: cornerRect, options: [.mouseEnteredAndExited, .activeAlways], owner: self, userInfo: nil)
+        addTrackingArea(area)
+        cornerArea = area
+    }
+
+    override func mouseEntered(with event: NSEvent) { if event.trackingArea === cornerArea { onCornerHover?(true) } }
+    override func mouseExited(with event: NSEvent) { if event.trackingArea === cornerArea { onCornerHover?(false) } }
 
     override var mouseDownCanMoveWindow: Bool { true }
 

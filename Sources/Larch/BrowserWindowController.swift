@@ -62,10 +62,25 @@ final class BrowserWindowController: NSObject, NSTextFieldDelegate, NSWindowDele
         tabs.onStructureChange = { [weak self] in self?.rebuildRows() }
         tabs.onActiveChange = { [weak self] in self?.activeChanged() }
         tabs.onTabChange = { [weak self] in self?.tabChanged($0) }
+        root.onSidebarVisibilityChange = { [weak self] _ in self?.syncTrafficLights() }
+        root.onCornerHover = { [weak self] in self?.cornerHover = $0; self?.syncTrafficLights() }
+        syncTrafficLights(animated: false)
         restoreSession()
         window.makeKeyAndOrderFront(nil)
         focusAddress()
     }
+
+    // MARK: 紅綠燈
+
+    private var cornerHover = false
+
+    /// 側邊欄顯示時一直顯示；隱藏時只有滑鼠在左上角感應區才顯示。
+    func syncTrafficLights(animated: Bool = true) {
+        (window as? LarchWindow)?.setTrafficLights(visible: root.sidebarVisible || cornerHover, animated: animated)
+    }
+
+    func windowDidEnterFullScreen(_ notification: Notification) { syncTrafficLights(animated: false) }
+    func windowDidExitFullScreen(_ notification: Notification) { syncTrafficLights(animated: false) }
 
     // MARK: Session
 

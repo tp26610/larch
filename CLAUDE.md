@@ -15,7 +15,7 @@ Brian（Senior Engineering Manager，台灣，用繁體中文溝通）因 Arc �
 ```bash
 swift build
 swift run Larch                 # 執行
-scripts/smoke.sh                    # 151 項煙霧測試，驅動真實視窗與 WKWebView（會開視窗）
+scripts/smoke.sh                    # 162 項煙霧測試，驅動真實視窗與 WKWebView（會開視窗）
 scripts/bundle.sh                   # build/Larch.app（Info.plist 含 http/https、html 宣告）
 scripts/install.sh                  # 安裝到 /Applications（見 README）
 .build/debug/Larch --live-check https://accounts.google.com /tmp/out
@@ -72,10 +72,12 @@ Smoke.swift                      FixtureServer（本機假網站）+ smoke 檢�
 
 18. **雙擊 bar 放大/還原**：標題列隱藏 + `isMovableByWindowBackground` 時系統不處理雙擊，由 `LarchWindow.sendEvent` 攔 `clickCount == 2`：hit-test 的整條祖先鏈都 `mouseDownCanMoveWindow == true`（外框、側邊欄空白）才算 bar，依 `AppleActionOnDoubleClick` 做 `performZoom`（預設 / Maximize）、`performMiniaturize`（Minimize）或不動（None）。網頁卡片、Tab 列、按鈕、網址列不處理；卡片底下仍不可有拖曳區域（第 1 點）。
 
+19. **紅綠燈跟著側邊欄**：`RootView.onSidebarVisibilityChange` → `BrowserWindowController.syncTrafficLights` → `LarchWindow.setTrafficLights`（alpha 淡入淡出，結束後 `isHidden`）。側邊欄隱藏時，`RootView` 左上角 90x40 的 `NSTrackingArea`（`.activeAlways`，不攔截事件，網頁卡片點擊/捲動不受影響）進入時暫時顯示、離開再隱藏。全螢幕一律顯示（交給系統），進出全螢幕時重新同步。啟動時以 `syncTrafficLights(animated: false)` 對齊。截圖用 `--hide-sidebar` 旗標（建議搭配 `HOME=<暫存資料夾>` 避免寫入真實資料），見 `docs/sidebar-*.png`。
+
 ## 驗證狀況
-- smoke 151/151 通過（macOS 26 / Swift 6.2.4）；accounts.google.com 登入頁載入成功（含 favicon）。
+- smoke 162/162 通過（macOS 26 / Swift 6.2.4）；accounts.google.com 登入頁載入成功（含 favicon）。
 - 冷啟動與已執行時 `open -a` 開外部連結已用打包的 .app 實測（session.json 有新 Tab）。
-- 尚未在真實視窗手動驗證：實際把它設為預設瀏覽器、真實鍵盤的 ⌘= 放大、拖曳視窗手感、紅綠燈位置、側邊欄隱藏後紅綠燈浮在網頁上、捲動手感、Google 實際帳密登入與重開後保持登入（只驗證登入頁載入；持久性依據實驗專案的結果）、下載、HTTP 驗證對話框、全螢幕影片。
+- 尚未在真實視窗手動驗證：實際把它設為預設瀏覽器、真實鍵盤的 ⌘= 放大、拖曳視窗手感、紅綠燈位置、側邊欄隱藏時滑鼠實際移到左上角的紅綠燈淡入淡出、全螢幕進出、捲動手感、Google 實際帳密登入與重開後保持登入（只驗證登入頁載入；持久性依據實驗專案的結果）、下載、HTTP 驗證對話框、全螢幕影片。
 
 ## Backlog
 見 `BACKLOG.md`；開工前先讀，完成後移到「已完成」。
