@@ -25,6 +25,7 @@ final class TabRowView: NSView, NSTextFieldDelegate, SidebarRow {
     private var finishedEditing = true
 
     var isEditing: Bool { !finishedEditing }
+    var closeToolTip: String? { closeButton.toolTip }
     var isShowingSpinner: Bool { !spinner.isHidden }
     var titleText: String { titleLabel.stringValue }
     var isActive = false { didSet { refreshBackground() } }
@@ -147,7 +148,9 @@ final class TabRowView: NSView, NSTextFieldDelegate, SidebarRow {
 
     private func refreshBackground() {
         layer?.backgroundColor = (isActive ? Theme.active : hovering ? Theme.hover : NSColor.clear).cgColor
-        closeButton.alphaValue = tab != nil && (isActive || hovering) ? 0.8 : 0
+        closeButton.alphaValue = (isActive || hovering) ? 0.8 : 0
+        // 釘選列：第一下關閉 Tab（保留釘選），變灰後第二下才移除釘選（仿 Arc）。
+        closeButton.toolTip = pin == nil ? "Close Tab" : tab != nil ? "Close and Keep Pinned" : "Remove Pin"
     }
 
     override func mouseEntered(with event: NSEvent) { hovering = true; refreshBackground() }

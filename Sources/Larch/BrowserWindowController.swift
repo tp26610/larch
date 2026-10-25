@@ -179,7 +179,9 @@ final class BrowserWindowController: NSObject, NSTextFieldDelegate, NSWindowDele
             guard let self else { return }
             if let pin = row.pin { self.tabs.activatePin(pin) } else if let tab = row.tab { self.tabs.select(tab) }
         }
-        row.onClose = { [weak self] row in if let tab = row.tab { self?.tabs.close(tab) } }
+        row.onClose = { [weak self] row in
+            if let tab = row.tab { self?.tabs.close(tab) } else if let pin = row.pin, let self { self.tabs.unpin(pin) }
+        }
         row.onRename = { [weak self] row, text in
             let t = text.trimmingCharacters(in: .whitespacesAndNewlines)
             if let tab = row.tab { tab.customTitle = t.isEmpty ? nil : t }

@@ -842,7 +842,20 @@ extension Smoke {
         tm.close(t1)
         check("關掉釘選的 Tab：節點保留、列變灰（無 Tab）", tm.pins.roots.count == 1 && tm.liveTab(forPin: tm.pins.roots[0].id) == nil
               && c.sidebar.rowViews.first { $0.pin != nil }?.tab == nil)
+        let grayRow = c.sidebar.rowViews.first { $0.pin != nil }!
+        check("釘選列 ✕ 提示：開著=Close and Keep Pinned、灰色=Remove Pin", grayRow.closeToolTip == "Remove Pin")
         check("灰色列仍顯示標題", c.sidebar.rowViews.first { $0.pin != nil }?.titleText == "Page A")
+        // ✕ 兩段式：先關 Tab、再移除釘選
+        let open0 = tm.pins.roots[0]
+        tm.activatePin(open0)
+        let openRow = c.sidebar.rowViews.first { $0.pin != nil }!
+        check("開著的釘選列 ✕ 提示是 Close and Keep Pinned", openRow.closeToolTip == "Close and Keep Pinned")
+        openRow.onClose?(openRow)
+        check("第一下 ✕：關閉 Tab、釘選保留（灰色）", tm.pins.roots.count == 1 && tm.liveTab(forPin: open0.id) == nil)
+        let grayRow2 = c.sidebar.rowViews.first { $0.pin != nil }!
+        grayRow2.onClose?(grayRow2)
+        check("第二下 ✕：移除釘選", tm.pins.roots.isEmpty && !c.sidebar.rowViews.contains { $0.pin != nil })
+        tm.pins.addTab(url: server.url("/a"), title: "Page A", parent: nil)
         // 點灰色列：用記住的網址重新開啟並綁定
         let node = tm.pins.roots[0]
         c.sidebar.rowViews.first { $0.pin != nil }?.onSelect?(c.sidebar.rowViews.first { $0.pin != nil }!)
