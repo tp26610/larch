@@ -98,6 +98,7 @@ enum Smoke {
     }
 
     static func run(_ app: AppDelegate) async {
+        setvbuf(stdout, nil, _IOLBF, 0)
         do { try await body(app) } catch { print("  FAIL exception \(error)"); failed += 1 }
         print("\n\(passed) passed, \(failed) failed")
         exit(failed == 0 ? 0 : 1)
@@ -271,6 +272,7 @@ enum Smoke {
         check("⌘W 關閉分頁", press("w", .command, in: c.window) && tm.tabs.count == before)
 
         try await sessionChecks(server, app)
+        try await externalChecks(server, app)
     }
 }
 
@@ -310,5 +312,25 @@ extension Smoke {
         let evil = tempStorage("evil")
         evil.write(SessionStore.fileName, SessionSnapshot(tabs: [.init(url: "file:///etc/passwd", customTitle: nil), .init(url: "javascript://x", customTitle: nil)], active: 5))
         check("非 http(s) 不還原", SessionStore.load(evil) == nil)
+    }
+}
+
+extension Smoke {
+    static func externalChecks(_ server: FixtureServer, _ app: AppDelegate) async throws {
+        print("外部開啟")
+        let c = app.controller!
+        let before = c.tabs.tabs.count
+        let current = c.tabs.activeTab
+        app.application(NSApp, open: [server.url("/b")])
+        check("外部連結新開 Tab 而非取代", c.tabs.tabs.count == before + 1 && c.tabs.tabs.contains { $0 === current })
+        check("新 Tab 載入外部連結", await wait { c.tabs.activeTab?.pageTitle == "Page B" })
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("mb-html-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let file = dir.appendingPathComponent("doc.html")
+        try Data("<meta charset=utf-8><title>本機檔案</title>".utf8).write(to: file)
+        app.application(NSApp, open: [file, URL(string: "mailto:a@b.c")!])
+        check("本機 .html 可開，mailto 忽略", await wait { c.tabs.activeTab?.pageTitle == "本機檔案" } && c.tabs.tabs.count == before + 2)
+        c.submitAddress(file.absoluteString)
+        check("網址列仍拒絕 file:", c.tabs.activeTab?.pageTitle == "本機檔案")
     }
 }

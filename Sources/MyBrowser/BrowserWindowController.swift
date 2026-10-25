@@ -22,6 +22,7 @@ final class BrowserWindowController: NSObject, NSTextFieldDelegate, NSWindowDele
                           styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
                           backing: .buffered, defer: false)
         super.init()
+        window.isReleasedWhenClosed = false
         window.title = "My Browser"
         window.titlebarAppearsTransparent = true
         window.titleVisibility = .hidden
@@ -148,6 +149,18 @@ final class BrowserWindowController: NSObject, NSTextFieldDelegate, NSWindowDele
 
     @objc func closeCurrentTab() {
         if let tab = tabs.activeTab { tabs.close(tab) }
+    }
+
+    /// 外部要求開啟（預設瀏覽器的連結、.html 檔）：一律新開 Tab，不取代現有分頁。
+    func openExternal(_ urls: [URL]) {
+        for url in urls {
+            if InputNormalizer.isHTTP(url) {
+                tabs.newTab(url: url)
+            } else if url.isFileURL, ["html", "htm"].contains(url.pathExtension.lowercased()) {
+                tabs.newTab().loadFile(url)
+            }
+        }
+        window.makeKeyAndOrderFront(nil)
     }
 
     @objc func restoreTab() {

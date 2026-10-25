@@ -21,7 +21,20 @@ cat > "$APP/Contents/Info.plist" <<PLIST
   <key>LSMinimumSystemVersion</key><string>14.0</string>
   <key>NSHighResolutionCapable</key><true/>
   <key>NSPrincipalClass</key><string>NSApplication</string>
+  <key>LSApplicationCategoryType</key><string>public.app-category.productivity</string>
+  <key>CFBundleURLTypes</key><array><dict>
+    <key>CFBundleURLName</key><string>Web URL</string>
+    <key>CFBundleTypeRole</key><string>Viewer</string>
+    <key>CFBundleURLSchemes</key><array><string>http</string><string>https</string></array>
+  </dict></array>
+  <key>CFBundleDocumentTypes</key><array><dict>
+    <key>CFBundleTypeName</key><string>HTML document</string>
+    <key>CFBundleTypeRole</key><string>Viewer</string>
+    <key>LSItemContentTypes</key><array><string>public.html</string></array>
+    <key>CFBundleTypeExtensions</key><array><string>html</string><string>htm</string></array>
+  </dict></array>
 </dict></plist>
 PLIST
+plutil -lint "$APP/Contents/Info.plist" >/dev/null
 codesign --force --sign - "$APP"
 echo "完成：$APP"

@@ -54,6 +54,14 @@ final class Tab: NSObject, WKNavigationDelegate, WKUIDelegate {
         webView.load(URLRequest(url: url))
     }
 
+    /// 使用者明確用「開啟檔案」交給瀏覽器的本機 HTML；只放行這一個檔案的導覽。
+    private var allowedFileURL: URL?
+
+    func loadFile(_ url: URL) {
+        allowedFileURL = url.standardizedFileURL
+        webView.loadFileURL(url, allowingReadAccessTo: url.deletingLastPathComponent())
+    }
+
     func teardown() {
         faviconTask?.cancel()
         webView.stopLoading()
@@ -68,6 +76,10 @@ final class Tab: NSObject, WKNavigationDelegate, WKUIDelegate {
     func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction,
                  decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
         guard let scheme = navigationAction.request.url?.scheme?.lowercased() else {
+            decisionHandler(.allow)
+            return
+        }
+        if scheme == "file", let allowed = allowedFileURL, navigationAction.request.url?.standardizedFileURL == allowed {
             decisionHandler(.allow)
             return
         }

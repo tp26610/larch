@@ -20,11 +20,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         for arg in CommandLine.arguments.dropFirst() {
             if let input = InputNormalizer.normalize(arg), input.kind == .url { controller.tabs.newTab(url: input.url) }
         }
+        if !pendingURLs.isEmpty { controller.openExternal(pendingURLs); pendingURLs = [] }
         if let i = CommandLine.arguments.firstIndex(of: "--live-check"), i + 2 < CommandLine.arguments.count {
             let url = CommandLine.arguments[i + 1], out = CommandLine.arguments[i + 2]
             Task { @MainActor in await Smoke.liveCheck(self, url: url, outPrefix: out) }
         } else if smoke {
             Task { @MainActor in await Smoke.run(self) }
+        }
+    }
+
+    /// 冷啟動時可能在 controller 建好之前就收到網址，先暫存。
+    private var pendingURLs: [URL] = []
+
+    func application(_ application: NSApplication, open urls: [URL]) {
+        if let controller { controller.openExternal(urls) } else { pendingURLs += urls }
+    }
+
+    @objc func makeDefaultBrowser() {
+        let appURL = Bundle.main.bundleURL
+        for scheme in ["http", "https"] {
+            NSWorkspace.shared.setDefaultApplication(at: appURL, toOpenURLsWithScheme: scheme) { error in
+                if let error { NSLog("MyBrowser: 設為預設瀏覽器失敗（\(scheme)）：\(error.localizedDescription)") }
+            }
         }
     }
 
@@ -68,6 +85,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let me = self
         add("My Browser", [
             item("About My Browser", #selector(NSApplication.orderFrontStandardAboutPanel(_:))),
+            item("Make Default Browser…", #selector(makeDefaultBrowser), target: me),
             .separator(),
             item("Hide My Browser", #selector(NSApplication.hide(_:)), "h"),
             item("Quit My Browser", #selector(NSApplication.terminate(_:)), "q"),
