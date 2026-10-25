@@ -3,7 +3,6 @@
 ## 接下來（依序）
 1. Little Arc：Alt+點連結（及外部連結）先在獨立小視窗開啟，可關閉或加進 Tabs
 2. Ctrl+Tab MRU：最近使用 Tab 切換（Electron 版踩過的坑：不要攔截 keyUp，見 ../my-browser/CLAUDE.md）
-3. Command Palette：⌘T 搜尋 + 開新 Tab 已完成，動作（例如 Restore Last）與 Tab 切換器待做（元件見 CommandPaletteView / PaletteModel，擴充方式見 CLAUDE.md）
 4. 書籤（Brian 不太用，優先度低；Pinned tabs + 巢狀資料夾已完成）
 
 ## 已知缺口（未排序）
@@ -27,3 +26,4 @@
 - 紅綠燈跟著側邊欄收合，隱藏時滑鼠移到左上角暫時顯示
 - 載入狀態：卡片頂端進度條、Tab 列 spinner、重新整理變停止
 - Pinned tabs 與巢狀資料夾（⌘D、⌘⇧N、右鍵選單、拖曳、灰色已關閉釘選、重開後還原）；一般 Tab 拖曳排序
+- Command Palette 完成：⌘T / ⌘L、動作模式（Tab 鍵進入）與 17 個動作、類型標籤與快捷鍵、近用排序（Ctrl+Tab 切換器仍在待辦）

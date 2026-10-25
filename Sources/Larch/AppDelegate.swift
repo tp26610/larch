@@ -64,6 +64,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc func newTab() { controller.showPalette() }
     @objc func closeTab() { controller.closeCurrentTab() }
+    @objc func duplicateTab() { controller.duplicateTab() }
+    @objc func copyURLAsMarkdown() { controller.copyURLAsMarkdown() }
     @objc func togglePin() { controller.togglePinAction() }
     @objc func newFolder() { controller.newFolderAction() }
     @objc func restoreTab() { controller.restoreTab() }
@@ -109,6 +111,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             item("Open Location", #selector(focusAddress), "l", target: me),
             item("Close Tab", #selector(closeTab), "w", target: me),
             item("Close Tab (Ctrl+W)", #selector(closeTab), "w", .control, target: me),
+            item("Duplicate Tab", #selector(duplicateTab), "D", [.control, .shift], target: me),
             item("Pin / Unpin Tab", #selector(togglePin), "d", target: me),
             item("New Folder", #selector(newFolder), "N", [.command, .shift], target: me),
             item("Restore Closed Tab", #selector(restoreTab), "T", [.command, .shift], target: me),
@@ -128,6 +131,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             item("Find Previous", #selector(findPrevious), "G", [.command, .shift], target: me),
             .separator(),
             item("Copy URL", #selector(copyURL), "C", [.command, .shift], target: me),
+            item("Copy URL as Markdown", #selector(copyURLAsMarkdown), "C", [.command, .option, .shift], target: me),
         ])
         add("View", [
             item("Toggle Sidebar", #selector(toggleSidebar), "s", target: me),

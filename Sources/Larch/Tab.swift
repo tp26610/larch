@@ -20,6 +20,8 @@ final class Tab: NSObject, WKNavigationDelegate, WKUIDelegate {
     var zoomStore: ZoomStore?
     /// 釘選的 Tab 對應的 PinNode.id；nil 代表一般 Tab。
     var pinID: UUID?
+    /// 最近一次被選中的時間（命令列排序用）。
+    var lastActiveAt = Date()
 
     private var observations: [NSKeyValueObservation] = []
     private var faviconTask: URLSessionDataTask?
@@ -52,6 +54,7 @@ final class Tab: NSObject, WKNavigationDelegate, WKUIDelegate {
         webView.navigationDelegate = self
         webView.uiDelegate = self
         webView.allowsBackForwardNavigationGestures = true
+        webView.isInspectable = true
         webView.underPageBackgroundColor = Theme.card
         observations = [
             webView.observe(\.title) { [weak self] _, _ in

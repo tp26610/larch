@@ -52,8 +52,9 @@ final class BrowserWindowController: NSObject, NSTextFieldDelegate, NSWindowDele
 
         sidebar.downloadButton.target = self
         sidebar.downloadButton.action = #selector(downloadClicked)
-        root.palette.provider = { [weak self] q in
+        root.palette.provider = { [weak self] q, mode in
             guard let self else { return [] }
+            if mode == .actions { return PaletteSearch.actionResults(for: q, controller: self) }
             return PaletteSearch.results(for: q, tabs: self.tabs.tabs, history: self.tabs.history,
                                          pins: self.tabs.pins.allTabs.filter { self.tabs.liveTab(forPin: $0.id) == nil })
         }
@@ -475,7 +476,7 @@ final class BrowserWindowController: NSObject, NSTextFieldDelegate, NSWindowDele
 
     func openPalette(prefill: String?, navigatesCurrentTab: Bool = false) {
         paletteNavigatesCurrentTab = navigatesCurrentTab
-        root.palette.field.placeholderString = navigatesCurrentTab ? "Search or enter address (current tab)" : "Search or enter address (new tab)"
+        root.palette.placeholder = navigatesCurrentTab ? "Search or enter address (current tab)" : "Search or enter address (new tab)"
         if !root.palette.isOpen {
             let r = window.firstResponder
             paletteReturnFocus = (r as? NSTextView)?.delegate as? NSResponder ?? r
@@ -498,6 +499,10 @@ final class BrowserWindowController: NSObject, NSTextFieldDelegate, NSWindowDele
             if paletteNavigatesCurrentTab, let tab = tabs.activeTab { tab.load(url) } else { tabs.newTab(url: url) }
         case .switchTab(let tab): tabs.select(tab)
         case .activatePin(let id): if let n = tabs.pins.find(id)?.node { tabs.activatePin(n) }
+        case .runAction(let id):
+            // 動作自己決定焦點（改名、尋找、再開覆蓋層等），這裡不強制交給網頁。
+            if let a = PaletteActions.find(id), a.isAvailable(self) { a.run(self) }
+            return
         }
         window.makeFirstResponder(tabs.activeTab?.webView)
     }
@@ -508,6 +513,52 @@ final class BrowserWindowController: NSObject, NSTextFieldDelegate, NSWindowDele
             window.makeFirstResponder(r)
         }
         if window.firstResponder === window || window.firstResponder == nil { window.makeFirstResponder(tabs.activeTab?.webView) }
+    }
+
+    // MARK: 動作表用的操作（與選單共用）
+
+    /// 空白 Tab，接著叫出覆蓋層輸入網址（在這個新 Tab 導航）。
+    func newBlankTab() {
+        tabs.newTab()
+        showAddressPalette()
+    }
+
+    /// 除了目前 Tab 以外的一般（未釘選）Tab。
+    func otherRegularTabs() -> [Tab] { tabs.tabs.filter { $0 !== tabs.activeTab && $0.pinID == nil } }
+
+    func closeOtherTabs() {
+        for t in otherRegularTabs() { tabs.close(t) }
+    }
+
+    @objc func duplicateTab() {
+        guard let tab = tabs.activeTab, let url = tab.displayURL, InputNormalizer.isHTTP(url) else { return }
+        tabs.newTab(url: url, customTitle: tab.pinID == nil ? tab.customTitle : nil, after: tab)
+    }
+
+    @objc func copyURLAsMarkdown() {
+        guard let tab = tabs.activeTab, let url = tab.displayURL?.absoluteString else { return }
+        let title = tab.displayTitle.replacingOccurrences(of: "[", with: "\\[").replacingOccurrences(of: "]", with: "\\]")
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString("[\(title)](\(url))", forType: .string)
+    }
+
+    func renameActiveTab() {
+        guard let tab = tabs.activeTab else { return }
+        if !root.sidebarVisible { root.sidebarVisible = true }
+        root.layoutSubtreeIfNeeded()
+        beginRename(tab.pinID ?? tab.id)
+    }
+
+    /// 開 Web Inspector 需要 WebKit 的私有介面；取不到就不提供這個動作。
+    var canOpenInspector: Bool {
+        guard let wv = tabs.activeTab?.webView, wv.isInspectable, wv.responds(to: NSSelectorFromString("_inspector")),
+              let insp = wv.value(forKey: "_inspector") as? NSObject else { return false }
+        return insp.responds(to: NSSelectorFromString("show"))
+    }
+
+    func openInspector() {
+        guard canOpenInspector, let insp = tabs.activeTab?.webView.value(forKey: "_inspector") as? NSObject else { return }
+        insp.perform(NSSelectorFromString("show"))
     }
 
     @objc func closeCurrentTab() {

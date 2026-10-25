@@ -2,23 +2,54 @@ import Foundation
 
 /// 覆蓋層裡的一列。標題與副標一律當純文字顯示。
 struct PaletteItem {
-    enum Kind { case openOrSearch, tab, pin, history }
+    enum Kind { case openOrSearch, tab, pin, history, action }
     enum Action {
         case open(URL)
         case switchTab(Tab)
         case activatePin(UUID)
+        case runAction(String)
     }
     let kind: Kind
     let title: String
     let subtitle: String
     let action: Action
+    var shortcut: String? = nil
+
+    /// 右側的類型標籤。
+    var badge: String {
+        switch kind {
+        case .openOrSearch: return "Open"
+        case .tab: return "Tab"
+        case .pin: return "Pinned"
+        case .history: return "History"
+        case .action: return "Action"
+        }
+    }
 }
+
+/// 覆蓋層模式。之後的 Ctrl+Tab MRU 切換器可在這裡加 `.switcher`（延遲顯示、放開 Ctrl 確認、不顯示輸入框）。
+enum PaletteMode { case normal, actions }
 
 /// 依輸入組出候選列：開啟/搜尋、已開啟的 Tab、歷史。純函式式，方便測試與日後擴充動作、Tab 切換器。
 @MainActor
 enum PaletteSearch {
-    static let maxTabs = 8
+    static let maxTabs = 20
     static let maxHistory = 6
+
+    /// 動作模式：只列動作（可用的），以標題與關鍵字比對；空查詢依動作表順序。
+    static func actionResults(for query: String, controller: BrowserWindowController) -> [PaletteItem] {
+        let q = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        var scored: [(Double, Int, PaletteAction)] = []
+        for (i, a) in PaletteActions.all.enumerated() where a.isAvailable(controller) {
+            let t = a.title(controller)
+            let s = q.isEmpty ? 0 : max(Double(Fuzzy.score(query: q, in: t)), 0.6 * Double(Fuzzy.score(query: q, in: a.keywords)))
+            if s >= 0 { scored.append((s, i, a)) }
+        }
+        scored.sort { $0.0 != $1.0 ? $0.0 > $1.0 : $0.1 < $1.1 }
+        return scored.map { _, _, a in
+            PaletteItem(kind: .action, title: a.title(controller), subtitle: "", action: .runAction(a.id), shortcut: a.shortcut)
+        }
+    }
 
     static func results(for query: String, tabs: [Tab], history: HistoryStore?, pins: [PinNode] = []) -> [PaletteItem] {
         let q = query.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -31,12 +62,15 @@ enum PaletteSearch {
 
         var openURLs = Set<String>()
         var scoredTabs: [(Int, Int, Tab)] = []
-        for (i, tab) in tabs.enumerated() {
+        // 最近使用的在前；模糊分數加上一點近用加成（對應 Electron 版的 recency bonus）。
+        let byRecency = tabs.enumerated().sorted { $0.element.lastActiveAt > $1.element.lastActiveAt }
+        for (rank, entry) in byRecency.enumerated() {
+            let tab = entry.element
             if let u = tab.displayURL?.absoluteString { openURLs.insert(u) }
             let s = Fuzzy.score(query: q, in: tab.displayTitle + " " + (tab.displayURL?.absoluteString ?? ""))
-            if s >= 0 { scoredTabs.append((s, i, tab)) }
+            if s >= 0 { scoredTabs.append((q.isEmpty ? 0 : s, rank, tab)) }
         }
-        scoredTabs.sort { $0.0 != $1.0 ? $0.0 > $1.0 : $0.1 < $1.1 }
+        scoredTabs.sort { $0.0 + max(0, 8 - $0.1) != $1.0 + max(0, 8 - $1.1) ? $0.0 + max(0, 8 - $0.1) > $1.0 + max(0, 8 - $1.1) : $0.1 < $1.1 }
         for (_, _, tab) in scoredTabs.prefix(maxTabs) {
             items.append(PaletteItem(kind: .tab, title: tab.displayTitle, subtitle: tab.displayURL?.absoluteString ?? "", action: .switchTab(tab)))
         }

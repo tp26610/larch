@@ -315,6 +315,7 @@ enum Smoke {
         try await trafficLightChecks(server, app)
         try await loadingChecks(server, app)
         try await pinChecks(server, app)
+        try await actionChecks(server, app)
     }
 }
 
@@ -1036,4 +1037,181 @@ final class FakeDraggingInfo: NSObject, NSDraggingInfo {
     func slideDraggedImage(to screenPoint: NSPoint) {}
     func enumerateDraggingItems(options enumOpts: NSDraggingItemEnumerationOptions = [], for view: NSView?, classes classArray: [AnyClass], searchOptions: [NSPasteboard.ReadingOptionKey: Any] = [:], using block: @escaping (NSDraggingItem, Int, UnsafeMutablePointer<ObjCBool>) -> Void) {}
     func resetSpringLoading() {}
+}
+
+extension Smoke {
+    static func actionChecks(_ server: FixtureServer, _ app: AppDelegate) async throws {
+        print("Command Palette：動作模式")
+        let c = BrowserWindowController(dataStore: .nonPersistent(), storage: tempStorage("actions"), autosave: false)
+        let tm = c.tabs
+        let p = c.root.palette
+        func cmd(_ sel: Selector) -> Bool { p.control(p.field, textView: NSTextView(), doCommandBy: sel) }
+        func actionIDs() -> [String] { p.items.compactMap { if case .runAction(let id) = $0.action { return id } else { return nil } } }
+        /// 開覆蓋層 → Tab 進動作模式 → 輸入查詢 → 執行指定動作。
+        func run(_ id: String, query: String = "") {
+            c.openPalette(prefill: nil)
+            _ = cmd(#selector(NSResponder.insertTab(_:)))
+            p.field.stringValue = query
+            p.refresh()
+            if let i = p.items.firstIndex(where: { if case .runAction(let a) = $0.action { return a == id } else { return false } }) { p.pick(i) } else { p.dismiss() }
+        }
+        let a = tm.newTab(url: server.url("/a"))
+        let b = tm.newTab(url: server.url("/b"))
+        let cc = tm.newTab(url: server.url("/c"))
+        _ = await wait { a.pageTitle == "Page A" && b.pageTitle == "Page B" && cc.pageTitle == "頁面 C" }
+        tm.select(b)
+
+        // 一般模式不列動作
+        c.openPalette(prefill: nil)
+        p.field.stringValue = "restore"; p.refresh()
+        check("一般模式輸入 restore 不列 Actions", !p.items.contains { $0.kind == .action } && !p.isChipVisible)
+        // Tab 進入
+        check("Tab 鍵進入動作模式、出現 Actions chip", cmd(#selector(NSResponder.insertTab(_:))) && p.mode == .actions && p.isChipVisible && p.chipText == "Actions")
+        check("動作模式保留查詢文字、只列動作", p.field.stringValue == "restore" && p.items.allSatisfy { $0.kind == .action })
+        check("沒有已關閉的 Tab 時 Restore 不列出", !actionIDs().contains("restore"))
+        // 離開
+        check("Shift+Tab 離開動作模式", cmd(#selector(NSResponder.insertBacktab(_:))) && p.mode == .normal && !p.isChipVisible)
+        _ = cmd(#selector(NSResponder.insertTab(_:)))
+        p.field.stringValue = "x"; p.refresh()
+        check("輸入框有字時 Backspace 不離開（交給文字編輯）", !cmd(#selector(NSResponder.deleteBackward(_:))) && p.mode == .actions)
+        p.field.stringValue = ""; p.refresh()
+        check("輸入框為空 Backspace 離開動作模式", cmd(#selector(NSResponder.deleteBackward(_:))) && p.mode == .normal)
+        p.dismiss()
+
+        // 不適用的動作隱藏
+        let blank = tm.newTab()
+        c.openPalette(prefill: nil); _ = cmd(#selector(NSResponder.insertTab(_:)))
+        let ids = actionIDs()
+        check("空白 Tab：複製網址/複製為 Markdown/複製/縮放/尋找/Pin 隱藏", !ids.contains("copyUrl") && !ids.contains("copyMd") && !ids.contains("duplicate")
+              && !ids.contains("zoomIn") && !ids.contains("find") && !ids.contains("pin"), "\(ids)")
+        check("空白 Tab：通用動作仍在", ids.contains("close") && ids.contains("sidebar") && ids.contains("newFolder") && ids.contains("new"))
+        p.dismiss()
+        tm.close(blank)
+        tm.select(b)
+
+        // 外觀：標籤與快捷鍵
+        c.openPalette(prefill: nil); _ = cmd(#selector(NSResponder.insertTab(_:)))
+        let closeRow = p.rows.first { $0.item.title == "Close Tab" }
+        check("動作列顯示類型標籤與快捷鍵", closeRow?.badgeText == "Action" && closeRow?.shortcutText == "⌘W")
+        check("Open Web Inspector 與可用性一致", actionIDs().contains("inspector") == c.canOpenInspector)
+        p.dismiss()
+
+        // 關閉 → Restore 排第一
+        run("close")
+        check("動作 Close Tab", tm.tabs.count == 3 && !tm.tabs.contains { $0 === b })
+        c.openPalette(prefill: nil); _ = cmd(#selector(NSResponder.insertTab(_:)))
+        p.field.stringValue = "restore"; p.refresh()
+        check("輸入 restore：Restore Last Closed Tab 排第一", p.items.first?.title == "Restore Last Closed Tab", "\(p.items.map(\.title))")
+        p.dismiss()
+        run("restore", query: "restore")
+        check("動作 Restore Last Closed Tab", await wait { tm.activeTab?.displayURL == server.url("/b") } && tm.tabs.count == 4)
+
+        // Duplicate
+        let cur = tm.activeTab!
+        run("duplicate", query: "dup")
+        let ci = tm.tabs.firstIndex { $0 === cur }!
+        check("動作 Duplicate Tab：同網址、緊接在原 Tab 之後", tm.tabs.count == 5 && tm.tabs[ci + 1].displayURL == cur.displayURL && tm.activeTab === tm.tabs[ci + 1])
+
+        // Pin / Unpin（標題隨狀態變化）
+        let target = tm.activeTab!
+        c.openPalette(prefill: nil); _ = cmd(#selector(NSResponder.insertTab(_:)))
+        check("未釘選時標題是 Pin Tab", p.items.contains { $0.title == "Pin Tab" })
+        p.dismiss()
+        run("pin", query: "pin")
+        check("動作 Pin Tab", target.pinID != nil && tm.pins.roots.count == 1)
+        c.openPalette(prefill: nil); _ = cmd(#selector(NSResponder.insertTab(_:)))
+        check("已釘選時標題是 Unpin Tab", p.items.contains { $0.title == "Unpin Tab" })
+        p.dismiss()
+        run("pin", query: "unpin")
+        check("動作 Unpin Tab", target.pinID == nil && tm.pins.roots.isEmpty)
+
+        // Rename
+        run("rename", query: "rename")
+        check("動作 Rename Tab：該列進入改名", c.sidebar.rowViews.first { $0.tab === tm.activeTab }?.isEditing == true)
+        c.sidebar.rowViews.first { $0.tab === tm.activeTab }?.finishRename(commit: false)
+
+        // Copy URL / Markdown
+        run("copyUrl", query: "copy tab url")
+        check("動作 Copy Tab URL", NSPasteboard.general.string(forType: .string) == tm.activeTab?.displayURL?.absoluteString)
+        run("copyMd", query: "markdown")
+        let md = NSPasteboard.general.string(forType: .string) ?? ""
+        check("動作 Copy Tab URL as Markdown", md == "[\(tm.activeTab!.displayTitle)](\(tm.activeTab!.displayURL!.absoluteString))", md)
+
+        // 新資料夾、側邊欄、縮放、尋找、重新整理
+        run("newFolder", query: "folder")
+        check("動作 New Folder（進入改名）", tm.pins.roots.contains { $0.isFolder } && c.sidebar.sidebarRows.contains { ($0 as? FolderRowView)?.isEditing == true })
+        c.sidebar.sidebarRows.compactMap { $0 as? FolderRowView }.first?.finishRename(commit: false)
+        let sbBefore = c.root.sidebarVisible
+        run("sidebar", query: "sidebar")
+        check("動作 Toggle Sidebar", c.root.sidebarVisible != sbBefore)
+        run("sidebar", query: "sidebar")
+        check("再執行一次還原", c.root.sidebarVisible == sbBefore)
+        run("zoomIn", query: "zoom in")
+        check("動作 Zoom In", tm.activeTab!.webView.pageZoom > 1)
+        run("zoomReset", query: "reset zoom")
+        check("動作 Reset Zoom", tm.activeTab!.webView.pageZoom == 1)
+        run("find", query: "find")
+        check("動作 Find in Page", !c.root.findBar.isHidden)
+        c.closeFind()
+        let slow = tm.newTab(url: server.url("/slow?reload"))
+        _ = await wait(6) { slow.pageTitle == "Slow Page" && !slow.isLoading }
+        run("reload", query: "reload")
+        check("動作 Reload Tab：重新載入（進入載入中）", await wait(2) { slow.isLoading })
+        _ = await wait(6) { !slow.isLoading }
+        tm.close(slow)
+
+        // Close Other Tabs：保留目前與釘選
+        let keep = tm.activeTab!
+        let pinned = tm.tabs.first { $0 !== keep }!
+        tm.pin(pinned)
+        run("closeOthers", query: "other")
+        check("動作 Close Other Tabs：只留目前與釘選的 Tab", Set(tm.tabs.map(ObjectIdentifier.init)) == Set([ObjectIdentifier(keep), ObjectIdentifier(pinned)]), "tabs=\(tm.tabs.count)")
+        c.openPalette(prefill: nil); _ = cmd(#selector(NSResponder.insertTab(_:)))
+        check("沒有其他一般 Tab 時 Close Other Tabs 隱藏", !actionIDs().contains("closeOthers"))
+        p.dismiss()
+
+        // New Blank Tab → 空白 Tab 並叫出覆蓋層（在該 Tab 導航）
+        let n = tm.tabs.count
+        run("new", query: "blank")
+        check("動作 New Blank Tab：多一個空白 Tab、覆蓋層以目前 Tab 導航模式開啟", tm.tabs.count == n + 1 && tm.activeTab?.displayURL == nil && p.isOpen && c.paletteNavigatesCurrentTab)
+        p.dismiss()
+
+        // 近用排序與捲動
+        for i in 0..<12 { tm.newTab(url: server.url("/b?r\(i)")) }
+        let latest = tm.tabs[tm.tabs.count - 3]
+        tm.select(latest)
+        c.openPalette(prefill: nil)
+        check("空輸入：最近使用的 Tab 排在最前", p.items.first(where: { $0.kind == .tab }).map { if case .switchTab(let t) = $0.action { return t === latest } else { return false } } == true)
+        c.root.layoutSubtreeIfNeeded()
+        check("列數多時最多顯示 8 列（其餘捲動）", p.items.count > 8 && p.visibleRowCount == 8 && p.panelFrame.height > 8 * 46 && p.panelFrame.height < 9 * 48 + 90, "\(p.items.count) \(p.visibleRowCount) \(p.panelFrame)")
+        p.dismiss()
+        if let dir = ProcessInfo.processInfo.environment["LARCH_SHOT_DIR"] { await paletteShots(c, server, dir) }
+        c.window.close()
+    }
+
+    /// 截圖用：一般模式與動作模式（LARCH_SHOT_DIR 指定資料夾）。
+    static func paletteShots(_ c: BrowserWindowController, _ server: FixtureServer, _ dir: String) async {
+        let tm = c.tabs
+        while tm.tabs.count > 1 { tm.close(tm.tabs.last!) }
+        tm.history?.record(url: URL(string: "https://example.com/release-notes")!, title: "Release notes — Example")
+        tm.history?.record(url: URL(string: "https://example.com/reports")!, title: "Quarterly reports")
+        let t1 = tm.newTab(url: server.url("/a")), t2 = tm.newTab(url: server.url("/b"))
+        _ = await wait { t1.pageTitle == "Page A" && t2.pageTitle == "Page B" }
+        tm.pins.addTab(url: URL(string: "https://example.com/reference")!, title: "Reference docs", parent: nil)
+        tm.close(t1)
+        c.window.setContentSize(NSSize(width: 1000, height: 640))
+        func save(_ name: String) async {
+            try? await Task.sleep(nanoseconds: 300_000_000)
+            c.root.layoutSubtreeIfNeeded()
+            if let rep = c.root.bitmapImageRepForCachingDisplay(in: c.root.bounds) {
+                c.root.cacheDisplay(in: c.root.bounds, to: rep)
+                try? rep.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: dir + "/" + name))
+            }
+        }
+        c.openPalette(prefill: "re")
+        await save("palette-normal.png")
+        c.root.palette.enterActions()
+        await save("palette-actions.png")
+        c.root.palette.dismiss()
+    }
 }

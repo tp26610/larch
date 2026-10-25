@@ -60,6 +60,7 @@ final class TabManager {
     func select(_ tab: Tab) {
         guard tabs.contains(where: { $0 === tab }), activeTab !== tab else { return }
         activeTab = tab
+        tab.lastActiveAt = Date()
         onActiveChange?()
     }
 
