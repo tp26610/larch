@@ -1,6 +1,5 @@
 # Larch
 
-（資料夾名稱暫為 my-browser-mac。）
 
 macOS 專用瀏覽器：Swift + AppKit + 系統 WebKit（WKWebView）。Arc 式左側欄 + 圓角網頁卡片。
 
