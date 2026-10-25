@@ -3,9 +3,18 @@
 ## 接下來（依序）
 1. Little Arc：Alt+點連結（及外部連結）先在獨立小視窗開啟，可關閉或加進 Tabs
 2. Ctrl+Tab MRU：最近使用 Tab 切換（Electron 版踩過的坑：不要攔截 keyUp，見 ../my-browser/CLAUDE.md）
-3. Spaces（仿 Arc）：側邊欄可切換多個 Space，各自有自己的釘選區、一般 Tab、名稱與主題色；待釐清：Space 之間是否各自獨立登入（類似 Profile，WKWebsiteDataStore 可用識別碼隔離）、切換手勢與快捷鍵、側邊欄底部的 Space 切換列、與現有 Pinned tabs / 資料夾的資料結構關係（pins.json 需加 space 欄位並遷移）
-4. 從 Arc 匯入：把 Arc 的 Spaces、置頂 Tab 與資料夾（含巢狀）、名稱匯入 Larch；待調查：Arc 本機資料位置與格式（推測在 `~/Library/Application Support/Arc/` 底下的 sidebar JSON，需實際確認）、哪些能匯入（結構與網址應可行，登入狀態與 cookie 是加密的，可能無法匯入，需重新登入）、先做唯讀解析並預覽再匯入，不修改 Arc 的資料；依賴 Spaces 的資料結構，建議在 Spaces 之後做
-5. 書籤（Brian 不太用，優先度低；Pinned tabs + 巢狀資料夾已完成）
+3. Spaces（仿 Arc；尚未開工，以下是預訂的設計起點）
+   - 資料模型：Space = 名稱、顏色（取代固定的鼠尾草綠，由該色推導 hover / active / 進度條等配色，確保白字對比）、可選 emoji、自己的釘選區（含巢狀資料夾）與自己的一般 Tab。
+   - 登入：所有 Space 先共用同一個 `WKWebsiteDataStore`；資料結構預留「Space 指定獨立 data store 識別碼」的欄位（只留欄位與註解，不實作）。
+   - 切換：側邊欄底部一列 Space 切換列（圓點或 emoji，目前高亮，右側「+」）；Ctrl+1…9 切換（不佔用 ⌘1…⌘9）；側邊欄兩指橫滑（若穩定再做）；切換不重新載入頁面（各 Space 的 WKWebView 保留，只顯示/隱藏），過場動畫 ≤ 200ms。
+   - 管理：右鍵重新命名、改色、改圖示、刪除（確認；其中的 Tab 一併關閉、釘選資料刪除；最後一個 Space 不能刪）；Tab / 釘選右鍵「移到 Space」或拖到切換列。
+   - Command Palette：新增 New / Rename / Switch to / Move Tab to Space 動作；一般模式的 Tab 與釘選搜尋跨所有 Space（結果標示所屬 Space），選到其他 Space 的項目先切過去。
+   - 還原：關閉 Tab 堆疊（⌘⇧T）維持全域，還原回原本的 Space；session restore 記住最後所在的 Space 與各 Space 的 Tab / 選中項；外部連結開在目前的 Space。
+   - 遷移：既有 `pins.json` / `session.json` 無損遷移到預設 Space「Personal」（色 #699987），需壞檔容錯與 smoke 檢查。
+4. 從 Arc 匯入：把 Arc 的 Spaces、置頂 Tab 與資料夾（含巢狀）、名稱匯入 Larch；不匯入登入狀態（Brian 確認不需要）。待調查：Arc 本機資料位置與格式（推測在 `~/Library/Application Support/Arc/` 底下的 sidebar JSON，需實際確認）；先做唯讀解析並預覽再匯入，不修改 Arc 的資料；依賴 Spaces 的資料結構，在 Spaces 之後做。
+
+## 想法（低優先，沒有必做理由）
+- 書籤：Arc 本身也沒有傳統書籤，釘選 Tab 與巢狀資料夾已取代；之後有具體需求再提升。
 
 ## 已知缺口（未排序）
 - 邊用邊記的問題放這裡
