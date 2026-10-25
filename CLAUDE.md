@@ -15,7 +15,7 @@ Brian（Senior Engineering Manager，台灣，用繁體中文溝通）因 Arc �
 ```bash
 swift build
 swift run Larch                 # 執行
-scripts/smoke.sh                    # 162 項煙霧測試，驅動真實視窗與 WKWebView（會開視窗）
+scripts/smoke.sh                    # 177 項煙霧測試，驅動真實視窗與 WKWebView（會開視窗）
 scripts/bundle.sh                   # build/Larch.app（Info.plist 含 http/https、html 宣告）
 scripts/install.sh                  # 安裝到 /Applications（見 README）
 .build/debug/Larch --live-check https://accounts.google.com /tmp/out
@@ -40,6 +40,7 @@ DownloadManager.swift            WKDownload → 下載資料夾，重名加序�
 ErrorPage.swift                  載入失敗說明頁（全部跳脫、CSP 禁腳本）
 FindBar.swift                    頁內尋找列 + ZoomStore（以 host 記縮放，存 UserDefaults）
 Theme.swift                      顏色與尺寸
+LoadingBarView.swift             卡片頂端載入進度條（estimatedProgress）
 LarchWindow.swift                主視窗子類別（⌘W/Ctrl+W 按鍵路徑、雙擊 bar）
 CommandPaletteView.swift         ⌘T 命令列覆蓋層（輸入框 + 候選列；provider / onPick 由 controller 注入，可重用）
 PaletteModel.swift               PaletteItem 與 PaletteSearch（開啟/搜尋、已開 Tab、歷史的候選與排序）
@@ -72,10 +73,12 @@ Smoke.swift                      FixtureServer（本機假網站）+ smoke 檢�
 
 18. **雙擊 bar 放大/還原**：標題列隱藏 + `isMovableByWindowBackground` 時系統不處理雙擊，由 `LarchWindow.sendEvent` 攔 `clickCount == 2`：hit-test 的整條祖先鏈都 `mouseDownCanMoveWindow == true`（外框、側邊欄空白）才算 bar，依 `AppleActionOnDoubleClick` 做 `performZoom`（預設 / Maximize）、`performMiniaturize`（Minimize）或不動（None）。網頁卡片、Tab 列、按鈕、網址列不處理；卡片底下仍不可有拖曳區域（第 1 點）。
 
-19. **紅綠燈跟著側邊欄**：`RootView.onSidebarVisibilityChange` → `BrowserWindowController.syncTrafficLights` → `LarchWindow.setTrafficLights`（alpha 淡入淡出，結束後 `isHidden`）。側邊欄隱藏時，`RootView` 左上角 90x40 的 `NSTrackingArea`（`.activeAlways`，不攔截事件，網頁卡片點擊/捲動不受影響）進入時暫時顯示、離開再隱藏。全螢幕一律顯示（交給系統），進出全螢幕時重新同步。啟動時以 `syncTrafficLights(animated: false)` 對齊。截圖用 `--hide-sidebar` 旗標（建議搭配 `HOME=<暫存資料夾>` 避免寫入真實資料），見 `docs/sidebar-*.png`。
+19. **紅綠燈跟著側邊欄**：`RootView.onSidebarVisibilityChange` → `BrowserWindowController.syncTrafficLights` → `LarchWindow.setTrafficLights`（alpha 淡入淡出，結束後 `isHidden`）。側邊欄隱藏時，`RootView` 左上角 90x40 的 `NSTrackingArea`（`.activeAlways`，不攔截事件，網頁卡片點擊/捲動不受影響）進入時暫時顯示、離開再隱藏。全螢幕一律顯示（交給系統），進出全螢幕時重新同步。啟動時以 `syncTrafficLights(animated: false)` 對齊。截圖用 `--hide-sidebar` 旗標（注意直接執行會讀寫真實資料，見第 20 點），見 `docs/sidebar-*.png`。
+
+20. **載入狀態**：`Tab` 以 KVO 觀察 `isLoading` 與 `estimatedProgress`（都走 `onChange`）；`BrowserWindowController.syncLoading` 只把目前 Tab 的狀態餵給 `CardView.loadingBar`（3px、貼卡片上緣被圓角裁切、`hitTest` 為 nil 不擋點擊捲動）與停止鈕，切換 Tab 時 `animated: false` 立即反映。結束（完成、失敗、停止）一律走 `isLoading == false`，進度條衝到 100% 後淡出。Tab 列載入中以 `NSProgressIndicator` spinner 取代 favicon（舊的底部掃動光條已移除）。已知：`load()` 後立刻 `stopLoading()`（毫秒內）WebKit 會丟掉 stop、isLoading 卡住；人手點擊不會遇到，smoke 的停止檢查要先等約 0.4 秒。**注意：macOS app 忽略 `HOME` 環境變數，`HOME=...` 不能隔離資料，直接執行 Larch 會讀寫真實的 `~/Library/Application Support/Larch/`**（`--hide-sidebar`、`--open-palette` 截圖時要留意）。載入中截圖見 `docs/loading.png`。
 
 ## 驗證狀況
-- smoke 162/162 通過（macOS 26 / Swift 6.2.4）；accounts.google.com 登入頁載入成功（含 favicon）。
+- smoke 177/177 通過（macOS 26 / Swift 6.2.4）；accounts.google.com 登入頁載入成功（含 favicon）。
 - 冷啟動與已執行時 `open -a` 開外部連結已用打包的 .app 實測（session.json 有新 Tab）。
 - 尚未在真實視窗手動驗證：實際把它設為預設瀏覽器、真實鍵盤的 ⌘= 放大、拖曳視窗手感、紅綠燈位置、側邊欄隱藏時滑鼠實際移到左上角的紅綠燈淡入淡出、全螢幕進出、捲動手感、Google 實際帳密登入與重開後保持登入（只驗證登入頁載入；持久性依據實驗專案的結果）、下載、HTTP 驗證對話框、全螢幕影片。
 

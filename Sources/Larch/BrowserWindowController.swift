@@ -148,6 +148,7 @@ final class BrowserWindowController: NSObject, NSTextFieldDelegate, NSWindowDele
         if let tab = tabs.activeTab {
             root.card.show(tab.webView)
             syncToolbar(tab)
+            syncLoading(tab, animated: false)
             window.title = tab.displayTitle
         }
         if tabs.activeTab?.url == nil { focusAddress() } else if window.firstResponder === addressField.currentEditor() {
@@ -160,8 +161,15 @@ final class BrowserWindowController: NSObject, NSTextFieldDelegate, NSWindowDele
         rows[tab.id]?.update()
         if tab === tabs.activeTab {
             syncToolbar(tab)
+            syncLoading(tab)
             window.title = tab.displayTitle
         }
+    }
+
+    /// 進度條與重新整理/停止按鈕只反映目前選中的 Tab。
+    private func syncLoading(_ tab: Tab, animated: Bool = true) {
+        root.card.loadingBar.update(loading: tab.isLoading, progress: tab.webView.estimatedProgress, animated: animated)
+        sidebar.setLoading(tab.isLoading)
     }
 
     private func syncToolbar(_ tab: Tab) {
@@ -290,7 +298,10 @@ final class BrowserWindowController: NSObject, NSTextFieldDelegate, NSWindowDele
 
     @objc func goBack() { tabs.activeTab?.webView.goBack() }
     @objc func goForward() { tabs.activeTab?.webView.goForward() }
-    @objc func reload() { tabs.activeTab?.reloadOrRetry() }
+    @objc func reload() {
+        guard let tab = tabs.activeTab else { return }
+        if tab.isLoading { tab.webView.stopLoading() } else { tab.reloadOrRetry() }
+    }
 
     @objc func toggleSidebar() {
         root.sidebarVisible.toggle()

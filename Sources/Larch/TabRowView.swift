@@ -13,12 +13,12 @@ final class TabRowView: NSView, NSTextFieldDelegate {
     private let titleLabel = NSTextField(labelWithString: "")
     let renameField = NSTextField()
     private let closeButton = NSButton()
-    private let loadingLayer = CAGradientLayer()
+    private let spinner = NSProgressIndicator()
     private var hovering = false
     private var finishedEditing = true
 
     var isEditing: Bool { !finishedEditing }
-    var isShowingLoadingBar: Bool { !loadingLayer.isHidden && loadingLayer.animation(forKey: "sweep") != nil }
+    var isShowingSpinner: Bool { !spinner.isHidden }
     var titleText: String { titleLabel.stringValue }
     var isActive = false { didSet { refreshBackground() } }
 
@@ -66,7 +66,14 @@ final class TabRowView: NSView, NSTextFieldDelegate {
         closeButton.action = #selector(closeClicked)
         closeButton.alphaValue = 0
 
-        for v in [iconView, placeholder, titleLabel, renameField, closeButton] {
+        spinner.style = .spinning
+        spinner.controlSize = .small
+        spinner.isIndeterminate = true
+        spinner.isDisplayedWhenStopped = false
+        spinner.appearance = NSAppearance(named: .darkAqua) // 綠色側邊欄上顯示白色
+        spinner.isHidden = true
+
+        for v in [iconView, placeholder, spinner, titleLabel, renameField, closeButton] {
             v.translatesAutoresizingMaskIntoConstraints = false
             addSubview(v)
         }
@@ -75,6 +82,10 @@ final class TabRowView: NSView, NSTextFieldDelegate {
             iconView.centerYAnchor.constraint(equalTo: centerYAnchor),
             iconView.widthAnchor.constraint(equalToConstant: 16),
             iconView.heightAnchor.constraint(equalToConstant: 16),
+            spinner.centerXAnchor.constraint(equalTo: iconView.centerXAnchor),
+            spinner.centerYAnchor.constraint(equalTo: iconView.centerYAnchor),
+            spinner.widthAnchor.constraint(equalToConstant: 16),
+            spinner.heightAnchor.constraint(equalToConstant: 16),
             placeholder.leadingAnchor.constraint(equalTo: iconView.leadingAnchor),
             placeholder.centerYAnchor.constraint(equalTo: centerYAnchor),
             placeholder.widthAnchor.constraint(equalToConstant: 16),
@@ -92,12 +103,6 @@ final class TabRowView: NSView, NSTextFieldDelegate {
             renameField.heightAnchor.constraint(equalToConstant: 22),
         ])
 
-        loadingLayer.colors = [NSColor.clear.cgColor, Theme.accent.cgColor, NSColor.clear.cgColor]
-        loadingLayer.startPoint = CGPoint(x: 0, y: 0.5)
-        loadingLayer.endPoint = CGPoint(x: 1, y: 0.5)
-        loadingLayer.isHidden = true
-        layer?.addSublayer(loadingLayer)
-
         addTrackingArea(NSTrackingArea(rect: .zero, options: [.mouseEnteredAndExited, .activeInKeyWindow, .inVisibleRect], owner: self))
         update()
     }
@@ -107,7 +112,11 @@ final class TabRowView: NSView, NSTextFieldDelegate {
     /// 從 Tab 狀態同步畫面；改名中不動標題欄位。
     func update() {
         titleLabel.stringValue = tab.displayTitle
-        if let favicon = tab.favicon {
+        let loading = tab.isLoading
+        if loading {
+            iconView.isHidden = true
+            placeholder.isHidden = true
+        } else if let favicon = tab.favicon {
             iconView.image = favicon
             iconView.isHidden = false
             placeholder.isHidden = true
@@ -116,26 +125,9 @@ final class TabRowView: NSView, NSTextFieldDelegate {
             placeholder.isHidden = false
             placeholder.stringValue = String((tab.url?.host ?? "").replacingOccurrences(of: "www.", with: "").first.map { String($0).uppercased() } ?? "")
         }
-        titleLabel.textColor = tab.isLoading ? Theme.muted : Theme.text
-        setLoading(tab.isLoading)
-    }
-
-    private func setLoading(_ on: Bool) {
-        loadingLayer.isHidden = !on
-        if on {
-            guard loadingLayer.animation(forKey: "sweep") == nil else { return }
-            let width = max(bounds.width, 200)
-            loadingLayer.frame = CGRect(x: 0, y: 0, width: width * 0.4, height: 2)
-            let anim = CABasicAnimation(keyPath: "position.x")
-            anim.fromValue = -width * 0.2
-            anim.toValue = width * 1.2
-            anim.duration = 1.1
-            anim.repeatCount = .infinity
-            anim.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
-            loadingLayer.add(anim, forKey: "sweep")
-        } else {
-            loadingLayer.removeAnimation(forKey: "sweep")
-        }
+        titleLabel.textColor = loading ? Theme.muted : Theme.text
+        spinner.isHidden = !loading
+        if loading { spinner.startAnimation(nil) } else { spinner.stopAnimation(nil) }
     }
 
     private func refreshBackground() {

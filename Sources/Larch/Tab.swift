@@ -58,6 +58,7 @@ final class Tab: NSObject, WKNavigationDelegate, WKUIDelegate {
             },
             webView.observe(\.url) { [weak self] _, _ in self?.notify() },
             webView.observe(\.isLoading) { [weak self] _, _ in self?.notify() },
+            webView.observe(\.estimatedProgress) { [weak self] _, _ in self?.notify() },
             webView.observe(\.canGoBack) { [weak self] _, _ in self?.notify() },
             webView.observe(\.canGoForward) { [weak self] _, _ in self?.notify() },
         ]

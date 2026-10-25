@@ -121,6 +121,14 @@ final class SidebarView: NSView {
 
     required init?(coder: NSCoder) { fatalError() }
 
+    /// 載入中重新整理鈕換成停止（✕）。
+    private(set) var isShowingStop = false
+    func setLoading(_ loading: Bool) {
+        isShowingStop = loading
+        reloadButton.image = NSImage(systemSymbolName: loading ? "xmark" : "arrow.clockwise", accessibilityDescription: loading ? "Stop" : "Reload")
+        reloadButton.toolTip = loading ? "Stop" : "Reload"
+    }
+
     func showDownload(_ status: DownloadManager.Status?) {
         guard let status else { downloadButton.isHidden = true; return }
         downloadButton.isHidden = false
@@ -227,10 +235,16 @@ final class CardView: NSView {
 
     required init?(coder: NSCoder) { fatalError() }
 
+    let loadingBar = LoadingBarView()
+
     func show(_ webView: NSView) {
         subviews.forEach { $0.removeFromSuperview() }
         webView.frame = bounds
         webView.autoresizingMask = [.width, .height]
         addSubview(webView)
+        // 進度條在網頁之上、貼卡片上緣（卡片圓角裁切），但不接收事件。
+        loadingBar.frame = NSRect(x: 0, y: bounds.height - LoadingBarView.height, width: bounds.width, height: LoadingBarView.height)
+        loadingBar.autoresizingMask = [.width, .minYMargin]
+        addSubview(loadingBar)
     }
 }

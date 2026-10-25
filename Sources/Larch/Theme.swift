@@ -25,3 +25,8 @@ extension Theme {
     static let paletteSelection = NSColor(srgbRed: 0x69 / 255, green: 0x99 / 255, blue: 0x87 / 255, alpha: 0.22)
     static let paletteRadius: CGFloat = 14
 }
+
+extension Theme {
+    // 載入進度條：亮色卡片上要看得清楚，比 panel 深的綠。
+    static let progress = NSColor(srgbRed: 0x1F / 255, green: 0x7A / 255, blue: 0x5C / 255, alpha: 1)
+}

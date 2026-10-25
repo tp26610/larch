@@ -197,11 +197,11 @@ enum Smoke {
         c.reload()
         check("重新整理後仍在 C", await wait { !t1.isLoading } && t1.pageTitle == "頁面 C")
 
-        print("載入指示")
+        print("載入指示（Tab 列）")
         c.submitAddress(server.url("/slow").absoluteString)
         let row1 = c.sidebar.rowViews[0]
-        check("載入中底部有掃動光條", await wait { row1.isShowingLoadingBar })
-        check("載入完成光條消失", await wait(6) { !row1.isShowingLoadingBar && t1.pageTitle == "Slow Page" })
+        check("載入中 Tab 列顯示 spinner", await wait { row1.isShowingSpinner })
+        check("載入完成 spinner 消失", await wait(6) { !row1.isShowingSpinner && t1.pageTitle == "Slow Page" })
 
         print("關閉與還原")
         tm.select(t2)
@@ -312,6 +312,7 @@ enum Smoke {
         try await paletteChecks(server, app)
         try await doubleClickChecks(server, app)
         try await trafficLightChecks(server, app)
+        try await loadingChecks(server, app)
     }
 }
 
@@ -737,5 +738,54 @@ extension Smoke {
         } else {
             check("雙擊外框 sendEvent（系統設定非 Zoom，略過視窗狀態驗證）", true)
         }
+    }
+}
+
+extension Smoke {
+    static func loadingChecks(_ server: FixtureServer, _ app: AppDelegate) async throws {
+        print("載入狀態（進度條 / spinner / 停止鈕）")
+        let c = app.controller!
+        let tm = c.tabs
+        let bar = c.root.card.loadingBar
+        if !c.root.sidebarVisible { c.toggleSidebar() }
+        let idle = tm.newTab(url: server.url("/b"))
+        _ = await wait { idle.pageTitle == "Page B" && !idle.isLoading }
+        _ = await wait(3) { !bar.isActive && !bar.isVisible }
+        check("閒置時進度條不顯示、按鈕是重新整理", !bar.isActive && !bar.isVisible && !c.sidebar.isShowingStop)
+
+        let slow = tm.newTab(url: server.url("/slow?1"))
+        check("載入中進度條出現並有寬度", await wait { bar.isActive && bar.isVisible && bar.fraction > 0 })
+        check("載入中重新整理鈕變停止", await wait { c.sidebar.isShowingStop })
+        let row = c.sidebar.rowViews.first { $0.tab === slow }
+        check("載入中 Tab 列有 spinner", row?.isShowingSpinner == true)
+        check("進度條貼在卡片上緣、高度 3px", bar.frame.height == 3 && abs(bar.frame.maxY - c.root.card.bounds.height) < 0.5 && c.root.card.subviews.contains { $0 === bar },
+              "\(bar.frame)")
+        check("進度條不接收滑鼠（hit-test 為 nil）", bar.hitTest(NSPoint(x: 5, y: 1)) == nil)
+        // 切換 Tab 各自反映
+        tm.select(idle)
+        check("切到閒置 Tab 立即不顯示進度條與停止鈕", !bar.isActive && !bar.isVisible && !c.sidebar.isShowingStop)
+        check("背景 Tab 仍在載入、列上有 spinner", slow.isLoading && row?.isShowingSpinner == true)
+        tm.select(slow)
+        check("切回載入中的 Tab 立即顯示進度條與停止鈕", bar.isActive && bar.isVisible && c.sidebar.isShowingStop)
+        check("載入完成後進度條淡出、按鈕還原、spinner 消失", await wait(6) { !slow.isLoading && !bar.isActive && !bar.isVisible && !c.sidebar.isShowingStop && row?.isShowingSpinner == false })
+
+        // 停止鈕
+        c.submitAddress(server.url("/slow?2").absoluteString)
+        check("再次載入進入載入狀態", await wait { slow.isLoading && c.sidebar.isShowingStop })
+        try? await Task.sleep(nanoseconds: 400_000_000)
+        c.sidebar.reloadButton.performClick(nil)
+        check("按停止：停止載入並還原狀態", await wait(3) { !slow.isLoading && !bar.isActive && !c.sidebar.isShowingStop }, "loading=\(slow.isLoading) active=\(bar.isActive) stop=\(c.sidebar.isShowingStop) active tab=\(tm.activeTab === slow)")
+        check("停止後 Tab 列沒有 spinner、沒有錯誤頁", row?.isShowingSpinner == false && slow.errorURL == nil, "\(String(describing: slow.errorURL)) \(String(describing: row?.isShowingSpinner))")
+        // 失敗頁也會結束
+        let tmp = try FixtureServer()
+        await tmp.start()
+        let dead = tmp.url("/x")
+        tmp.stop()
+        try? await Task.sleep(nanoseconds: 200_000_000)
+        c.submitAddress(dead.absoluteString)
+        check("導航失敗顯示說明頁並結束載入狀態", await wait { slow.errorURL == dead && !slow.isLoading && !bar.isActive && !c.sidebar.isShowingStop && row?.isShowingSpinner == false })
+        // 重新整理（非載入中）仍是重新整理
+        check("載入結束後按鈕可再次重新整理", !c.sidebar.isShowingStop)
+        tm.close(slow); tm.close(idle)
     }
 }
