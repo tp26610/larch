@@ -67,7 +67,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc func togglePin() { controller.togglePinAction() }
     @objc func newFolder() { controller.newFolderAction() }
     @objc func restoreTab() { controller.restoreTab() }
-    @objc func focusAddress() { controller.focusAddress() }
+    @objc func focusAddress() { controller.showAddressPalette() }
     @objc func reload() { controller.reload() }
     @objc func goBack() { controller.goBack() }
     @objc func goForward() { controller.goForward() }

@@ -296,7 +296,8 @@ enum Smoke {
         send("s", .control, in: c.window)
         c.root.layoutSubtreeIfNeeded()
         check("Ctrl+S 再按一次顯示", !c.root.sidebar.isHidden && card.frame.minX == sw)
-        check("⌘L 聚焦網址列", press("l", .command, in: c.window) && c.addressField.currentEditor() != nil)
+        check("⌘L 叫出命令列（在目前 Tab 導航）", press("l", .command, in: c.window) && c.root.palette.isOpen && !c.root.card.isHidden)
+        c.root.palette.dismiss()
         let before = tm.tabs.count
         check("⌘T 叫出覆蓋層而非直接新增空白分頁", press("t", .command, in: c.window) && c.root.palette.isOpen && tm.tabs.count == before)
         c.root.palette.dismiss()
@@ -650,9 +651,30 @@ extension Smoke {
         check("空白輸入沒有「開啟 / 搜尋」列、Enter 不開新 Tab", !p.items.contains { $0.kind == .openOrSearch } && tm.tabs.count == m)
         p.dismiss()
         // ⌘L 與 New Tab 按鈕
-        check("⌘L 仍是聚焦網址列", press("l", .command, in: w) && !p.isOpen && c.addressField.currentEditor() != nil)
+        // ⌘L：同一個覆蓋層，在目前 Tab 導航
+        let cur = tm.newTab(url: server.url("/a?cur"))
+        _ = await wait { cur.pageTitle == "Page A" }
+        w.makeFirstResponder(cur.webView)
+        let nBefore = tm.tabs.count
+        let curURL = cur.displayURL!.absoluteString
+        check("⌘L 開啟覆蓋層並預填目前網址且全選", press("l", .command, in: w) && p.isOpen && p.field.stringValue == curURL
+              && p.field.currentEditor()?.selectedRange.length == (curURL as NSString).length && c.paletteNavigatesCurrentTab)
+        p.field.stringValue = server.url("/b?nav").absoluteString
+        p.refresh()
+        _ = p.control(p.field, textView: NSTextView(), doCommandBy: #selector(NSResponder.insertNewline(_:)))
+        check("⌘L Enter：在目前 Tab 載入、不開新 Tab", tm.tabs.count == nBefore && tm.activeTab === cur && cur.requestedURL == server.url("/b?nav"))
+        _ = await wait { cur.pageTitle == "Page B" }
+        _ = press("l", .command, in: w)
+        tm.history?.record(url: server.url("/quokka"), title: "Quokka Archive")
+        p.field.stringValue = "quokka"; p.refresh()
+        if let i = p.items.firstIndex(where: { $0.kind == .history }) { p.pick(i) }
+        check("⌘L 選歷史：在目前 Tab 導航", tm.tabs.count == nBefore && tm.activeTab === cur && cur.requestedURL == server.url("/quokka"))
+        _ = press("l", .command, in: w)
+        p.dismiss()
+        check("⌘L 的覆蓋層之後 ⌘T 仍是開新 Tab", press("t", .command, in: w) && !c.paletteNavigatesCurrentTab)
+        p.dismiss()
         c.sidebar.newTabButton.performClick(nil)
-        check("側邊欄 New Tab 按鈕叫出同一個覆蓋層", p.isOpen && tm.tabs.count == m)
+        check("側邊欄 New Tab 按鈕叫出同一個覆蓋層", p.isOpen && tm.tabs.count == m + 1)
         p.dismiss()
         // 覆蓋層開啟時擋住網頁的點擊
         _ = press("t", .command, in: w)

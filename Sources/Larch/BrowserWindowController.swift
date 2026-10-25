@@ -465,7 +465,17 @@ final class BrowserWindowController: NSObject, NSTextFieldDelegate, NSWindowDele
     /// ⌘T / New Tab 按鈕：叫出搜尋 + 開新 Tab 的覆蓋層（已開啟時重新全選輸入）。
     @objc func showPalette() { openPalette(prefill: nil) }
 
-    func openPalette(prefill: String?) {
+    /// ⌘L：同一個覆蓋層，但結果在目前的 Tab 導航（不開新 Tab）；預填目前網址並全選。
+    @objc func showAddressPalette() {
+        openPalette(prefill: tabs.activeTab?.displayURL?.absoluteString, navigatesCurrentTab: true)
+    }
+
+    /// 這次覆蓋層的「開啟 / 搜尋」與歷史是否在目前 Tab 導航（⌘L）而不是開新 Tab（⌘T）。
+    private(set) var paletteNavigatesCurrentTab = false
+
+    func openPalette(prefill: String?, navigatesCurrentTab: Bool = false) {
+        paletteNavigatesCurrentTab = navigatesCurrentTab
+        root.palette.field.placeholderString = navigatesCurrentTab ? "Search or enter address (current tab)" : "Search or enter address (new tab)"
         if !root.palette.isOpen {
             let r = window.firstResponder
             paletteReturnFocus = (r as? NSTextView)?.delegate as? NSResponder ?? r
@@ -473,14 +483,19 @@ final class BrowserWindowController: NSObject, NSTextFieldDelegate, NSWindowDele
         root.palette.present()
         if let prefill, !prefill.isEmpty {
             root.palette.field.stringValue = prefill
-            root.palette.field.currentEditor()?.selectedRange = NSRange(location: (prefill as NSString).length, length: 0)
+            if navigatesCurrentTab {
+                root.palette.field.currentEditor()?.selectAll(nil)
+            } else {
+                root.palette.field.currentEditor()?.selectedRange = NSRange(location: (prefill as NSString).length, length: 0)
+            }
             root.palette.refresh()
         }
     }
 
     private func pick(_ item: PaletteItem) {
         switch item.action {
-        case .open(let url): tabs.newTab(url: url)
+        case .open(let url):
+            if paletteNavigatesCurrentTab, let tab = tabs.activeTab { tab.load(url) } else { tabs.newTab(url: url) }
         case .switchTab(let tab): tabs.select(tab)
         case .activatePin(let id): if let n = tabs.pins.find(id)?.node { tabs.activatePin(n) }
         }
