@@ -15,7 +15,7 @@ final class AddressBar: NSView {
     init() {
         super.init(frame: .zero)
         wantsLayer = true
-        layer?.backgroundColor = Theme.card.cgColor
+        layer?.backgroundColor = Theme.field.cgColor
         layer?.cornerRadius = 8
         field.isBordered = false
         field.drawsBackground = false

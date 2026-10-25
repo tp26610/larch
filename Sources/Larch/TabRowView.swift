@@ -41,7 +41,7 @@ final class TabRowView: NSView, NSTextFieldDelegate {
         placeholder.font = .systemFont(ofSize: 10)
         placeholder.textColor = Theme.muted
         placeholder.wantsLayer = true
-        placeholder.layer?.backgroundColor = NSColor(srgbRed: 0x3a / 255, green: 0x3f / 255, blue: 0x50 / 255, alpha: 1).cgColor
+        placeholder.layer?.backgroundColor = Theme.field.cgColor
         placeholder.layer?.cornerRadius = 4
 
         titleLabel.font = .systemFont(ofSize: 13)
@@ -52,7 +52,7 @@ final class TabRowView: NSView, NSTextFieldDelegate {
         renameField.font = .systemFont(ofSize: 13)
         renameField.textColor = Theme.text
         renameField.drawsBackground = true
-        renameField.backgroundColor = Theme.card
+        renameField.backgroundColor = Theme.field
         renameField.isBordered = false
         renameField.focusRingType = .none
         renameField.isHidden = true
