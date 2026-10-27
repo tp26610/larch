@@ -29,7 +29,7 @@ xattr -dr com.apple.quarantine "/Applications/Larch.app"
 資料位置：`~/Library/Application Support/Larch/`（session.json、history.json）；下載存到 `~/Downloads`。
 
 ## 目前功能
-- 單一視窗；側邊欄（⌘S / Ctrl+S 隱藏，紅綠燈一起收合；隱藏時滑鼠移到左上角會暫時顯示）+ 8px 邊框的圓角網頁卡片；雙擊外框或側邊欄空白處放大/還原視窗（依系統「按兩下視窗標題列」設定）
+- 單一視窗；側邊欄（⌘S / Ctrl+S 隱藏，紅綠燈一起收合；隱藏時滑鼠移到左上角會暫時顯示；拖曳與卡片的交界可調寬度，200~420px，重開後記住）+ 8px 邊框的圓角網頁卡片；雙擊外框或側邊欄空白處放大/還原視窗（依系統「按兩下視窗標題列」設定）
 - Little Arc：按住 Option 點連結，在獨立的小視窗先看一眼（Esc / ⌘W 關閉；⌘O、⌘Return 或「Add to Tabs」把同一個頁面搬進主視窗成為新 Tab，不重新載入）。其他 App 傳來的外部連結（Larch 設為預設瀏覽器時）預設也在 Little 開，File 選單「Open External Links in Little Window」可關掉改成新 Tab。可同時開多個，共用登入；命令列動作 Open in Little Window 可把目前頁面丟進 Little
 - Ctrl+Tab 最近使用（MRU）切換：快速按一下切到上一個用過的 Tab（不顯示任何東西）；按住 Ctrl 超過約 0.15 秒會顯示切換清單（favicon、標題、網址，依最近使用排序），按住 Ctrl 連按 Tab 往下、Ctrl+Shift+Tab 往上，放開 Ctrl 確認、Esc 取消、閒置 10 秒自動確認。範圍是主視窗所有開著的 Tab（灰色釘選不列）；命令列開著或 Little 為前景時不處理。命令列動作「Switch to Previous Tab」做同樣的快速切換
 - ⌘T 命令列：視窗中央彈出搜尋框，輸入網址或關鍵字 Enter 以新 Tab 開啟；即時列出已開啟的 Tab（Enter/點擊直接切換）與歷史紀錄；↑↓ 選取、Esc 或點外面關閉（側邊欄「+ New Tab」同一個）；每列右側顯示類型（Open / Tab / Pinned / History / Action）與快捷鍵，超過 8 列可捲動

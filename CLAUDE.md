@@ -18,7 +18,7 @@ Brian（Senior Engineering Manager，台灣，用繁體中文溝通）因 Arc �
 ```bash
 swift build
 swift run Larch                 # 執行
-scripts/smoke.sh                    # 365 項煙霧測試，驅動真實視窗與 WKWebView（會開視窗）
+scripts/smoke.sh                    # 374 項煙霧測試，驅動真實視窗與 WKWebView（會開視窗）
 scripts/bundle.sh                   # build/Larch.app（Info.plist 含 http/https、html 宣告）
 scripts/install.sh                  # 安裝到 /Applications（見 README）
 .build/debug/Larch --live-check https://accounts.google.com /tmp/out
@@ -94,8 +94,10 @@ Smoke.swift                      FixtureServer（本機假網站）+ smoke 檢�
 
 24. **Ctrl+Tab MRU 切換**：MRU 由 `TabManager` 在 `select` 與關閉後切換時遞增 `Tab.mruSeq`（`mruTabs` 依它排序；只含 `tabs` 清單裡的 Tab，所以灰色釘選與 Little 不在內）。事件入口是 **`LarchApplication.sendEvent`**（`main.swift` 用它當 NSApplication）→ key window 的 `LarchWindow.keyHandler`（主視窗設為 `TabSwitcher.handle`，Little 不設）：**Ctrl+Tab 是系統 key-view loop 鍵，不會走到 `NSWindow.sendEvent`，必須在 NSApplication 層處理**；keyDown Tab+Control 開始/往下、加 Shift 往上，flagsChanged 且 Control 放開 → 確認，Esc → 取消。這裡只「消耗 keyDown」，flagsChanged 與 keyUp 照常送達，所以沒有 Electron 版那個「吞掉 Ctrl+Tab 就收不到 Ctrl 放開」的坑，焦點在 WKWebView、欄位或覆蓋層都收得到。快速按（150ms 內放開）不顯示 UI 直接切；超過 `showDelay` 才用 `CommandPaletteView.presentSwitcher`（`PaletteMode.switcher`：只有清單、不搶焦點、不經過 onDismiss）；閒置 `idleTimeout`（10 秒）自動確認；視窗失去 key（Ctrl 可能在 app 外放開）視同確認。命令列（⌘T/⌘L）開著時 Ctrl+Tab 忽略（它的 Tab 鍵是動作模式）。切換清單的標題在顯示當下取得。截圖 `docs/switcher.png`。**smoke 注意**：依賴 key window 的檢查（Little 與切換器）需要 Larch 一直在前景，跑 smoke 時不要操作其他視窗，否則會因 app 失去啟用而偶發失敗（`ensureActive` 只在區段開頭確認一次）。
 
+25. **側邊欄拖曳縮放**：`RootView`（`SidebarView.swift`）把寬度從常數 `Theme.sidebarWidth` 改成可變的 `sidebarWidth` 屬性，`layout()` 用它取代原本處處引用的常數（常數保留當預設值與 smoke 的基準值）。交界處疊一個窄 6px 的 `SidebarResizeHandle`（`resizeHandle.frame = NSRect(x: sw-3, width: 6, ...)`），`mouseDownCanMoveWindow` 回 `false`（否則會跟第 1 點「卡片底下不可拖曳」與視窗拖曳打架）、覆寫空的 `mouseDown` 明確接手這次拖曳（NSView 預設往上傳，拖曳中途可能被吞）、`resetCursorRects` 給 resize 游標。拖曳範圍夾在 `Theme.sidebarWidthRange`（200...420，刻意放 `Theme.swift` 而非 `RootView`，因為 `Preferences.sidebarWidth` 的 getter 也要用、`RootView` 是 `@MainActor` 類別型別但 `Preferences` 不是，放常數型別裡兩邊都能用，不會有 actor isolation 警告）；放開滑鼠才透過 `onSidebarWidthChange` 存進 `Preferences.sidebarWidth`（UserDefaults），下次啟動 `BrowserWindowController.init` 讀回來餵給 `root.sidebarWidth`。smoke 用合成的 `NSEvent.mouseEvent` + `window.sendEvent` 走真實 hit-test 路徑（跟雙擊 bar 的測法一樣），測完要把寬度與 Preferences 都還原成預設值，否則後面假設預設寬度的檢查（卡片四周 8px 那段）會跟著壞掉。
+
 ## 驗證狀況
-- smoke 365/365 通過（macOS 26 / Swift 6.2.4）；accounts.google.com 登入頁載入成功（含 favicon）。
+- smoke 374/374 通過（macOS 26 / Swift 6.2.4）；accounts.google.com 登入頁載入成功（含 favicon）。
 - 冷啟動與已執行時 `open -a` 開外部連結已用打包的 .app 實測（session.json 有新 Tab）。
 - Google 實際帳密登入與重開後保持登入：已實測，正常。
 - 尚未在真實視窗手動驗證：真實 Option+點連結的手感（smoke 已送合成的 Option 滑鼠事件進 WKWebView）、外部連結走 Little 的實際流程（需設為預設瀏覽器）、Little 視窗拖曳/雙擊/縮放手感、實際把它設為預設瀏覽器、真實鍵盤的 ⌘= 放大、拖曳視窗手感、紅綠燈位置、側邊欄隱藏時滑鼠實際移到左上角的紅綠燈淡入淡出、全螢幕進出、捲動手感、下載、HTTP 驗證對話框、全螢幕影片。

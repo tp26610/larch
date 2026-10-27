@@ -303,6 +303,35 @@ enum Smoke {
         send("s", .control, in: c.window)
         c.root.layoutSubtreeIfNeeded()
         check("Ctrl+S 再按一次顯示", !c.root.sidebar.isHidden && card.frame.minX == sw)
+
+        print("側邊欄拖曳縮放")
+        func dragSidebarTo(_ x: CGFloat) {
+            let y = card.frame.midY
+            func ev(_ type: NSEvent.EventType, _ rootX: CGFloat) -> NSEvent {
+                let p = c.root.convert(NSPoint(x: rootX, y: y), to: nil)
+                return NSEvent.mouseEvent(with: type, location: p, modifierFlags: [], timestamp: 0,
+                                           windowNumber: c.window.windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: 1)!
+            }
+            c.window.sendEvent(ev(.leftMouseDown, c.root.sidebarWidth))
+            c.window.sendEvent(ev(.leftMouseDragged, x))
+            c.window.sendEvent(ev(.leftMouseUp, x))
+        }
+        dragSidebarTo(320)
+        c.root.layoutSubtreeIfNeeded()
+        check("拖曳改變側邊欄寬度", c.root.sidebarWidth == 320 && card.frame.minX == 320, "\(c.root.sidebarWidth) \(card.frame)")
+        check("寬度存進 Preferences", c.prefs.sidebarWidth == 320)
+        dragSidebarTo(100)
+        c.root.layoutSubtreeIfNeeded()
+        check("拖曳超過下限會夾住", c.root.sidebarWidth == Theme.sidebarWidthRange.lowerBound)
+        dragSidebarTo(1000)
+        c.root.layoutSubtreeIfNeeded()
+        check("拖曳超過上限會夾住", c.root.sidebarWidth == Theme.sidebarWidthRange.upperBound)
+        // 還原預設寬度，避免影響後面假設預設寬度的檢查。
+        c.root.sidebarWidth = Theme.sidebarWidth
+        c.prefs.sidebarWidth = Theme.sidebarWidth
+        c.root.layoutSubtreeIfNeeded()
+        check("還原成預設寬度", card.frame.minX == sw)
+
         check("⌘L 叫出命令列（在目前 Tab 導航）", press("l", .command, in: c.window) && c.root.palette.isOpen && !c.root.card.isHidden)
         c.root.palette.dismiss()
         let before = tm.tabs.count
