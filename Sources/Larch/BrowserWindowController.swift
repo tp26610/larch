@@ -73,6 +73,8 @@ final class BrowserWindowController: NSObject, NSTextFieldDelegate, NSWindowDele
         (window as? LarchWindow)?.keyHandler = { [weak self] event in self?.switcher.handle(event) ?? false }
         root.onSidebarVisibilityChange = { [weak self] _ in self?.syncTrafficLights() }
         root.onCornerHover = { [weak self] in self?.cornerHover = $0; self?.syncTrafficLights() }
+        root.sidebarWidth = prefs.sidebarWidth
+        root.onSidebarWidthChange = { [weak self] in self?.prefs.sidebarWidth = $0 }
         syncTrafficLights(animated: false)
         restoreSession()
         window.makeKeyAndOrderFront(nil)

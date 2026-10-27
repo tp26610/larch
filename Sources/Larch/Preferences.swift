@@ -23,4 +23,13 @@ struct Preferences {
             defaults.set(Double(newValue.height), forKey: "littleHeight")
         }
     }
+
+    /// 使用者拖曳調整過的側邊欄寬度；超出範圍（或沒存過）用預設值。
+    var sidebarWidth: CGFloat {
+        get {
+            let w = defaults.double(forKey: "sidebarWidth")
+            return Theme.sidebarWidthRange.contains(w) ? w : Theme.sidebarWidth
+        }
+        nonmutating set { defaults.set(Double(newValue), forKey: "sidebarWidth") }
+    }
 }

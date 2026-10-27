@@ -234,6 +234,30 @@ final class SidebarView: NSView {
     }
 }
 
+/// 側邊欄與卡片交界的拖曳手把：窄窄一條，拖曳改寬度；本身不可拖動視窗（避免跟縮放打架），
+/// 也不能蓋住卡片太多（否則會擋到網頁點擊/捲動，見第 1 點的坑）。
+@MainActor
+final class SidebarResizeHandle: NSView {
+    override var mouseDownCanMoveWindow: Bool { false }
+    /// 拖曳中：目前滑鼠在 RootView 座標系的 x。
+    var onDrag: ((CGFloat) -> Void)?
+    var onDragEnd: (() -> Void)?
+
+    override func resetCursorRects() {
+        addCursorRect(bounds, cursor: .resizeLeftRight)
+    }
+
+    /// 明確接手這次拖曳（NSView 預設只會往上傳），讓後續 mouseDragged/mouseUp 固定送到這裡。
+    override func mouseDown(with event: NSEvent) {}
+
+    override func mouseDragged(with event: NSEvent) {
+        guard let superview else { return }
+        onDrag?(superview.convert(event.locationInWindow, from: nil).x)
+    }
+
+    override func mouseUp(with event: NSEvent) { onDragEnd?() }
+}
+
 /// 視窗內容：側邊欄 + 圓角網頁卡片。四周 8px 邊框是唯一的拖曳區域，卡片本身不可拖曳。
 @MainActor
 final class RootView: NSView {
@@ -241,6 +265,10 @@ final class RootView: NSView {
     let card = CardView()
     let findBar = FindBar()
     let palette = CommandPaletteView()
+    private let resizeHandle = SidebarResizeHandle()
+    var sidebarWidth: CGFloat = Theme.sidebarWidth { didSet { needsLayout = true } }
+    /// 拖曳放開後回報最終寬度；給 controller 存進 Preferences。
+    var onSidebarWidthChange: ((CGFloat) -> Void)?
     var sidebarVisible = true { didSet { needsLayout = true; if oldValue != sidebarVisible { onSidebarVisibilityChange?(sidebarVisible) } } }
     var onSidebarVisibilityChange: ((Bool) -> Void)?
     /// 滑鼠進出左上角感應區（供側邊欄隱藏時暫時顯示紅綠燈）。
@@ -269,8 +297,17 @@ final class RootView: NSView {
         layer?.backgroundColor = Theme.panel.cgColor
         addSubview(sidebar)
         addSubview(card)
+        addSubview(resizeHandle)
         addSubview(findBar)
         addSubview(palette)
+        resizeHandle.onDrag = { [weak self] x in
+            guard let self else { return }
+            self.sidebarWidth = min(max(x, Theme.sidebarWidthRange.lowerBound), Theme.sidebarWidthRange.upperBound)
+        }
+        resizeHandle.onDragEnd = { [weak self] in
+            guard let self else { return }
+            self.onSidebarWidthChange?(self.sidebarWidth)
+        }
     }
 
     required init?(coder: NSCoder) { fatalError() }
@@ -278,10 +315,12 @@ final class RootView: NSView {
     override func layout() {
         super.layout()
         let m = Theme.margin
-        let sw = sidebarVisible ? Theme.sidebarWidth : 0
+        let sw = sidebarVisible ? sidebarWidth : 0
         sidebar.isHidden = !sidebarVisible
-        sidebar.frame = NSRect(x: 0, y: 0, width: Theme.sidebarWidth, height: bounds.height)
+        sidebar.frame = NSRect(x: 0, y: 0, width: sidebarWidth, height: bounds.height)
         card.frame = cardFrame(sidebarWidth: sw)
+        resizeHandle.isHidden = !sidebarVisible
+        resizeHandle.frame = NSRect(x: sw - 3, y: 0, width: 6, height: bounds.height)
         palette.frame = bounds
         palette.anchorFrame = card.frame
         findBar.frame = NSRect(x: card.frame.maxX - 340 - 12, y: card.frame.maxY - 36 - 12, width: 340, height: 36)

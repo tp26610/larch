@@ -2,6 +2,7 @@ import AppKit
 
 enum Theme {
     static let sidebarWidth: CGFloat = 264
+    static let sidebarWidthRange: ClosedRange<CGFloat> = 200...420
     static let margin: CGFloat = 8
     static let cardRadius: CGFloat = 10
 
