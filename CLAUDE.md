@@ -61,7 +61,8 @@ Smoke.swift                      FixtureServer（本機假網站）+ smoke 檢�
 
 ## 決策與重要的坑
 1. **卡片底下不可有拖曳區域**：否則 macOS 會吞掉網頁捲動。只有視窗四周 8px 邊框與側邊欄空白處可拖曳（`isMovableByWindowBackground` + 各 view 的 `mouseDownCanMoveWindow`：RootView/SidebarView/FlippedView 為 true，CardView、Tab 列、網址列為 false）。smoke 有 hit-test 驗證。
-2. **登入**：`WKWebsiteDataStore.default()` + 預設 UA（不要偽造 UA）。彈出視窗（`window.open`/`target=_blank`）在 `createWebViewWith` 內以同一個 view 載入並回傳 nil。
+2. **登入**：`WKWebsiteDataStore.default()`。彈出視窗（`window.open`/`target=_blank`）在 `createWebViewWith` 內以同一個 view 載入並回傳 nil。
+   **UA 補字尾（不是偽裝 Chrome）**：`WKWebView` 預設 UA 少了 `Version/X Safari/Y` 字尾，導致它不被辨識為「正式」瀏覽器——Google 搜尋結果頁因此退回簡化版（無 favicon、無 AI 模式/購物等分頁、無帳號頭像），真正的 Safari 不會這樣。`Tab.init`（`Tab.swift`）用 `configuration.applicationNameForUserAgent` 補上這個字尾：Safari 版本號動態讀系統的 `/Applications/Safari.app`（跟著 macOS 更新），WebKit 組建號固定用 `605.1.15`（Safari 多年未變、真 Safari 也是這個值）。這跟已驗證無效、刻意不做的「偽裝 Chrome UA / `Sec-CH-UA`」（見 `docs/decisions.md`）是兩回事：那是假裝成別的瀏覽器引擎，這裡只是把 WKWebView 本來就該有、但預設沒帶的 Safari 身分字串補回去。用 `.build/debug/Larch --live-check https://httpbin.org/user-agent /tmp/x` 可以驗證目前送出的完整 UA 字串。
 3. **權限預設全拒**：媒體擷取一律 deny；僅啟用 element fullscreen。非 http/https/about/blob 的導覽（file:、mailto:、自訂 scheme）一律取消。
 4. **網頁來源的標題與網址一律 `stringValue` 純文字顯示**，不用 attributed/HTML。
 5. 關閉最後一個 Tab 會補一個空白 Tab；空白（無 http URL）的 Tab 不進 closedStack。

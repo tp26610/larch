@@ -52,7 +52,20 @@ final class Tab: NSObject, WKNavigationDelegate, WKUIDelegate {
         return "New Tab"
     }
 
+    /// WKWebView 預設 UA 不含 `Version/X Safari/Y` 字尾（跟真正的 Safari 不同），
+    /// 有些網站（例如 Google 搜尋結果頁的 favicon、AI 模式等豐富 UI）用這個判斷是不是「正式」瀏覽器，
+    /// 沒有就退回簡化版——跟 Chrome 偽裝無關（那條路已驗證無效，見 docs/decisions.md），這裡只是把 WKWebView
+    /// 本來就該有、但預設沒帶上的 Safari 識別字串補回去。Safari 版本號讀系統實際安裝的 Safari.app（跟著 macOS
+    /// 更新）；WebKit 組建號 605.1.15 是 Safari 多年未變的固定字串，真正的 Safari 也是這個值。
+    private static let safariApplicationName: String = {
+        let version = Bundle(path: "/Applications/Safari.app")?.infoDictionary?["CFBundleShortVersionString"] as? String ?? "18.0"
+        return "Version/\(version) Safari/605.1.15"
+    }()
+
     init(configuration: WKWebViewConfiguration) {
+        if configuration.applicationNameForUserAgent == nil {
+            configuration.applicationNameForUserAgent = Tab.safariApplicationName
+        }
         webView = WKWebView(frame: .zero, configuration: configuration)
         super.init()
         webView.navigationDelegate = self
