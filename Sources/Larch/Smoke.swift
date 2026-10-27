@@ -175,6 +175,12 @@ enum Smoke {
         check("側邊欄標題", c.sidebar.rowViews.first?.titleText == "Page A")
         check("favicon 載入", await wait { tm.activeTab?.favicon != nil })
 
+        print("favicon 上一層網域備援")
+        check("子網域取上一層", Tab.parentDomain(of: "accounts.google.com") == "google.com")
+        check("已是上一層不再往上", Tab.parentDomain(of: "google.com") == nil)
+        check("IPv4 排除", Tab.parentDomain(of: "127.0.0.1") == nil)
+        check("localhost 排除", Tab.parentDomain(of: "localhost") == nil)
+
         print("新增與切換")
         let t1 = tm.activeTab!
         let t2 = tm.newTab(url: server.url("/b"))
