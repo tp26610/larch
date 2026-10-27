@@ -38,3 +38,4 @@
 
 - Little Arc：Option+點連結、外部連結（預設瀏覽器）預設走 Little（File 選單可關）、加到 Tabs 搬移同一個 WKWebView、多視窗、Esc/⌘W/⌘O/⌘Return、命令列動作 Open in Little Window；順手修掉冷啟動多一個空白 Tab
 - Ctrl+Tab 最近使用（MRU）切換：快速按、按住顯示清單、連按/反向、放開確認、Esc、閒置自動確認；命令列動作 Switch to Previous Tab
+- Favicon 抓不到時（頁面沒有 `<link rel="icon">`，網域自己的 `/favicon.ico` 也 404，常見於 Google OAuth 登入/同意過場頁如 accounts.google.com）失敗再往上一層網域（eTLD+1 簡化版，排除 IPv4/localhost）試一次 `/favicon.ico`

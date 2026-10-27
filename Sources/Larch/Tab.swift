@@ -315,20 +315,40 @@ final class Tab: NSObject, WKNavigationDelegate, WKUIDelegate {
         }
     }
 
-    private func fetchFavicon(_ icon: URL, for pageURL: URL) {
+    private func fetchFavicon(_ icon: URL, for pageURL: URL, fallbackTried: Bool = false) {
         faviconTask?.cancel()
         var request = URLRequest(url: icon)
         request.timeoutInterval = 5
         faviconTask = URLSession.shared.dataTask(with: request) { [weak self] data, response, _ in
-            guard let data, (response as? HTTPURLResponse)?.statusCode == 200, let image = NSImage(data: data) else { return }
+            if let data, (response as? HTTPURLResponse)?.statusCode == 200, let image = NSImage(data: data) {
+                DispatchQueue.main.async {
+                    MainActor.assumeIsolated {
+                        guard let self, self.webView.url == pageURL else { return }
+                        self.favicon = image
+                        self.notify()
+                    }
+                }
+                return
+            }
+            // 子網域（如登入過場頁）常沒有自己的 favicon.ico；往上一層網域再試一次。
+            guard !fallbackTried, let host = icon.host, let parent = Tab.parentDomain(of: host),
+                  let fallback = URL(string: "/favicon.ico", relativeTo: URL(string: "https://\(parent)"))?.absoluteURL else { return }
             DispatchQueue.main.async {
                 MainActor.assumeIsolated {
                     guard let self, self.webView.url == pageURL else { return }
-                    self.favicon = image
-                    self.notify()
+                    self.fetchFavicon(fallback, for: pageURL, fallbackTried: true)
                 }
             }
         }
         faviconTask?.resume()
+    }
+
+    /// 簡化版 eTLD+1（取最後兩段）；只用於 favicon 的次要備援，取錯也只是備援落空，不影響正確性要求高的地方。
+    /// IPv4/localhost 沒有「上一層網域」的概念，排除。smoke 直接測這個函式（network-independent）。
+    static func parentDomain(of host: String) -> String? {
+        guard host != "localhost", host.split(separator: ".").contains(where: { !($0.allSatisfy(\.isNumber)) }) else { return nil }
+        let parts = host.split(separator: ".")
+        guard parts.count > 2 else { return nil }
+        return parts.suffix(2).joined(separator: ".")
     }
 }
