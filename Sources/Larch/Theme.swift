@@ -42,3 +42,9 @@ extension Theme {
     static let littlePill = NSColor(white: 0, alpha: 0.07)
     static let littleButton = NSColor(white: 0, alpha: 0.08)
 }
+
+extension Theme {
+    // History 視窗：淺灰頁面底 + 白色日期卡片（仿 Arc 的 history 頁）。
+    static let historyBackground = NSColor(white: 0.95, alpha: 1)
+    static let historyIconBubble = NSColor(white: 0, alpha: 0.06)
+}

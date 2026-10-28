@@ -565,33 +565,85 @@ extension Smoke {
             return
         }
         check("開啟 History 視窗", hw.window?.isVisible == true && hw.window?.title == "History")
-        check("列出三筆，依最新在前分在 Today 底下", hw.rowViews.count == 4
-              && (hw.rowViews[0] as? HistoryDayHeaderView)?.text == "Today"
-              && (hw.rowViews[1] as? HistoryRowView)?.titleText == "Gamma Page"
-              && (hw.rowViews[2] as? HistoryRowView)?.titleText == "Beta Page"
-              && (hw.rowViews[3] as? HistoryRowView)?.titleText == "Alpha Page", "\(hw.rowViews.count)")
+        check("列出三筆，依最新在前分在同一張 Today 卡片", hw.dayCards.count == 1 && hw.dayCards[0].dayText == "Today"
+              && hw.dayCards[0].rows.map(\.titleText) == ["Gamma Page", "Beta Page", "Alpha Page"], "\(hw.dayCards.map { ($0.dayText, $0.rows.map(\.titleText)) })")
+        check("預設不是多選模式（顯示搜尋欄）", !hw.isSelectionMode)
+        check("沒有 favicon 時列顯示字首字母備援", hw.dayCards[0].rows.allSatisfy { !$0.hasFaviconImage })
+
+        // favicon：Tab 載入完成才補（record 當下通常還沒有），這裡直接呼叫 updateFavicon 模擬。
+        func tinyPNG() -> Data {
+            let rep = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: 4, pixelsHigh: 4, bitsPerSample: 8, samplesPerPixel: 4,
+                                       hasAlpha: true, isPlanar: false, colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0)!
+            return rep.representation(using: .png, properties: [:]) ?? Data()
+        }
+        let png = tinyPNG()
+        tm.history?.updateFavicon(url: URL(string: "https://example.com/alpha")!, favicon: png)
+        hw.show()
+        check("updateFavicon 後該筆改顯示 favicon、其餘仍是字母備援", hw.dayCards[0].rows.first { $0.titleText == "Alpha Page" }?.hasFaviconImage == true
+              && hw.dayCards[0].rows.filter { $0.titleText != "Alpha Page" }.allSatisfy { !$0.hasFaviconImage })
+
+        // record() 覆寫「同網址剛好是最後一筆」（例如重新整理目前頁面）時要保留 favicon、不新增一筆；
+        // 用獨立的網址測試，測完立刻刪掉，不干擾後面依標題清單比對的檢查。
+        let scratchURL = URL(string: "https://example.com/favicon-scratch")!
+        tm.history?.record(url: scratchURL, title: "Scratch")
+        let countBeforeCoalesce = tm.history?.entries.count
+        tm.history?.updateFavicon(url: scratchURL, favicon: png)
+        tm.history?.record(url: scratchURL, title: "Scratch") // 同一筆（entries.last）重新整理
+        check("同網址重複造訪（record 覆寫最後一筆）保留 favicon、不新增筆數",
+              tm.history?.entries.count == countBeforeCoalesce && tm.history?.entries.last?.favicon == png)
+        if let scratch = tm.history?.entries.last { tm.history?.delete(scratch) }
 
         // 搜尋：直接呼叫 show() 觸發重新整理，等同輸入框觸發 searchChanged。
         hw.searchField.stringValue = "beta"
         hw.show()
-        check("搜尋過濾", hw.rowViews.count == 2 && (hw.rowViews[1] as? HistoryRowView)?.titleText == "Beta Page")
+        check("搜尋過濾", hw.dayCards.count == 1 && hw.dayCards[0].rows.map(\.titleText) == ["Beta Page"])
         hw.searchField.stringValue = "no-such-entry"
         hw.show()
-        check("搜尋無結果", hw.rowViews.isEmpty)
+        check("搜尋無結果", hw.dayCards.isEmpty)
         hw.searchField.stringValue = ""
         hw.show()
-        check("清空搜尋恢復全部", hw.rowViews.count == 4)
+        check("清空搜尋恢復全部", hw.dayCards.count == 1 && hw.dayCards[0].rows.count == 3)
 
         // 點擊開啟：在新 Tab 導航到該網址（先多開一個 Tab，避免被「唯一的全新空白 Tab」重用規則吃掉）。
         tm.newTab()
         let before = tm.tabs.count
-        (hw.rowViews[1] as? HistoryRowView)?.onOpen?()
+        hw.dayCards[0].rows[0].onOpen?() // Gamma（最新）
         check("點擊歷史開新 Tab", tm.tabs.count == before + 1 && tm.activeTab?.requestedURL?.absoluteString == "https://example.com/gamma")
 
-        // 刪除單筆：從 store 移除、視窗重新整理。
-        (hw.rowViews[2] as? HistoryRowView)?.onDelete?()
+        // 刪除單筆（⋯ 選單的 Delete）：從 store 移除、視窗重新整理。
+        hw.dayCards[0].rows[1].onDelete?() // Beta
         check("刪除單筆後從 store 移除", tm.history?.entries.contains { $0.title == "Beta Page" } == false)
-        check("刪除後視窗不再列出該筆", !hw.rowViews.contains { ($0 as? HistoryRowView)?.titleText == "Beta Page" })
+        check("刪除後視窗不再列出該筆", !hw.dayCards.contains { $0.rows.contains { $0.titleText == "Beta Page" } })
+
+        // 多選：勾選多筆 → 搜尋欄換成選取工具列 → Open 全部開啟並清掉選取。
+        tm.history?.record(url: URL(string: "https://example.com/delta")!, title: "Delta Page")
+        tm.history?.record(url: URL(string: "https://example.com/epsilon")!, title: "Epsilon Page")
+        hw.show()
+        check("多選前：剩 Epsilon/Delta/Gamma/Alpha", hw.dayCards[0].rows.map(\.titleText) == ["Epsilon Page", "Delta Page", "Gamma Page", "Alpha Page"])
+        var rows = hw.dayCards[0].rows
+        rows[0].onToggleSelect?(true) // Epsilon
+        rows[1].onToggleSelect?(true) // Delta
+        check("勾選兩筆後筆數正確", hw.selectedCount == 2)
+        check("勾選後切成選取工具列（取代搜尋欄）", hw.isSelectionMode)
+
+        let beforeOpenAll = tm.tabs.count
+        hw.openSelectedButton.performClick(nil)
+        check("Open 開啟勾選的兩筆為新 Tab", tm.tabs.count == beforeOpenAll + 2)
+        check("Open 後清空選取、換回搜尋欄", hw.selectedCount == 0 && !hw.isSelectionMode)
+
+        rows = hw.dayCards[0].rows // 重新整理後重新取得（Gamma、Alpha）
+        check("Open 不影響歷史本身的筆數", rows.map(\.titleText) == ["Epsilon Page", "Delta Page", "Gamma Page", "Alpha Page"])
+        rows[0].onToggleSelect?(true) // Epsilon
+        rows[1].onToggleSelect?(true) // Delta
+        hw.deleteSelectedButton.performClick(nil)
+        check("Delete 刪除勾選的兩筆", tm.history?.entries.contains { $0.title == "Epsilon Page" } == false
+              && tm.history?.entries.contains { $0.title == "Delta Page" } == false)
+        check("Delete 後清空選取、換回搜尋欄", hw.selectedCount == 0 && !hw.isSelectionMode)
+
+        hw.dayCards[0].rows.first?.onToggleSelect?(true)
+        check("再勾選一筆：進入選取模式", hw.isSelectionMode && hw.selectedCount == 1)
+        hw.clearSelectionButton.performClick(nil)
+        check("✕ 取消選取：回到搜尋欄", hw.selectedCount == 0 && !hw.isSelectionMode)
 
         // 清除歷史：取消不變動。
         BrowserWindowController.clearHistoryPrompt = { nil }
@@ -602,7 +654,7 @@ extension Smoke {
         // 清除歷史：按鈕走 onClearRequested → controller 確認 → 全部清除。
         BrowserWindowController.clearHistoryPrompt = { .all }
         hw.clearButton.performClick(nil)
-        check("Clear History 按鈕清除全部", tm.history?.entries.isEmpty == true && hw.rowViews.isEmpty)
+        check("Clear History 按鈕清除全部", tm.history?.entries.isEmpty == true && hw.dayCards.isEmpty)
 
         // 依時間範圍清除：只清最近一小時內的那些。
         tm.history?.record(url: URL(string: "https://example.com/old")!, title: "Old Page", at: Date().addingTimeInterval(-7200))
@@ -610,7 +662,7 @@ extension Smoke {
         BrowserWindowController.clearHistoryPrompt = { .lastHour }
         c.confirmClearHistory()
         check("只清最近一小時：保留兩小時前的那筆", tm.history?.entries.map(\.title) == ["Old Page"])
-        check("視窗跟著重新整理", hw.rowViews.count == 2 && (hw.rowViews[1] as? HistoryRowView)?.titleText == "Old Page")
+        check("視窗跟著重新整理", hw.dayCards.count == 1 && hw.dayCards[0].rows.map(\.titleText) == ["Old Page"])
 
         hw.window?.close()
         c.window.close()
