@@ -383,11 +383,14 @@ final class BrowserWindowController: NSObject, NSTextFieldDelegate, NSWindowDele
     private func tabChanged(_ tab: Tab) {
         scheduleSessionSave()
         rows[tab.pinID ?? tab.id]?.update()
+        var faviconPNG: Data?
+        if let img = tab.favicon, let tiff = img.tiffRepresentation { faviconPNG = NSBitmapImageRep(data: tiff)?.representation(using: .png, properties: [:]) }
         if let pid = tab.pinID {
-            var png: Data?
-            if let img = tab.favicon, let tiff = img.tiffRepresentation { png = NSBitmapImageRep(data: tiff)?.representation(using: .png, properties: [:]) }
             let hasTitle = tab.customTitle?.isEmpty == false || !tab.pageTitle.isEmpty
-            tabs.pins.remember(pid, title: hasTitle ? tab.displayTitle : nil, favicon: png)
+            tabs.pins.remember(pid, title: hasTitle ? tab.displayTitle : nil, favicon: faviconPNG)
+        }
+        if let png = faviconPNG, let url = tab.url, InputNormalizer.isHTTP(url) {
+            tabs.history?.updateFavicon(url: url, favicon: png)
         }
         if tab === tabs.activeTab {
             syncToolbar(tab)

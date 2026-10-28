@@ -4,6 +4,8 @@ struct HistoryEntry: Codable, Equatable {
     var url: String
     var title: String
     var visitedAt: Double
+    /// 縮圖 PNG；記錄當下通常還沒抓到，Tab 載入完成後用 `HistoryStore.updateFavicon` 補上。
+    var favicon: Data?
 }
 
 private struct HistoryFile: Codable {
@@ -31,13 +33,21 @@ final class HistoryStore {
 
     func record(url: URL, title: String, at date: Date = Date()) {
         guard InputNormalizer.isHTTP(url) else { return }
-        let entry = HistoryEntry(url: url.absoluteString, title: title, visitedAt: date.timeIntervalSince1970)
+        var entry = HistoryEntry(url: url.absoluteString, title: title, visitedAt: date.timeIntervalSince1970)
         if let last = entries.last, last.url == entry.url {
+            entry.favicon = last.favicon // 同網址重複造訪（例如重新整理）：保留已抓到的 favicon。
             entries[entries.count - 1] = entry
         } else {
             entries.append(entry)
         }
         if entries.count > Self.limit { entries.removeFirst(entries.count - Self.trimTo) }
+        saver.schedule { [weak self] in self?.save() }
+    }
+
+    /// Tab 載入完成才抓得到 favicon，記錄當下通常還沒有；補到該網址最近一筆造訪紀錄。
+    func updateFavicon(url: URL, favicon: Data) {
+        guard let idx = entries.lastIndex(where: { $0.url == url.absoluteString }), entries[idx].favicon != favicon else { return }
+        entries[idx].favicon = favicon
         saver.schedule { [weak self] in self?.save() }
     }
 

@@ -18,7 +18,7 @@ Brian（Senior Engineering Manager，台灣，用繁體中文溝通）因 Arc �
 ```bash
 swift build
 swift run Larch                 # 執行
-scripts/smoke.sh                    # 391 項煙霧測試，驅動真實視窗與 WKWebView（會開視窗）
+scripts/smoke.sh                    # 405 項煙霧測試，驅動真實視窗與 WKWebView（會開視窗）
 scripts/bundle.sh                   # build/Larch.app（Info.plist 含 http/https、html 宣告）
 scripts/install.sh                  # 安裝到 /Applications（見 README）
 .build/debug/Larch --live-check https://accounts.google.com /tmp/out
@@ -40,7 +40,7 @@ TabManager.swift                 tabs、activeTab、closedStack(25)、選取與�
 InputNormalizer.swift            網址/搜尋判斷（對應 my-browser util.js normalizeInput）
 Storage.swift                    Application Support JSON 讀寫（容錯）+ Debouncer
 SessionStore.swift               重開還原 Tab（session.json）；HistoryStore 在 History.swift
-HistoryWindow.swift              History 視窗（搜尋、依日期分組清單、刪除單筆、Clear History…）
+HistoryWindow.swift              History 視窗（仿 Arc：日期卡片、搜尋、多選 Open/Delete、Clear History…）
 DownloadManager.swift            WKDownload → 下載資料夾，重名加序號
 ErrorPage.swift                  載入失敗說明頁（全部跳脫、CSP 禁腳本）
 FindBar.swift                    頁內尋找列 + ZoomStore（以 host 記縮放，存 UserDefaults）
@@ -97,10 +97,10 @@ Smoke.swift                      FixtureServer（本機假網站）+ smoke 檢�
 
 25. **側邊欄拖曳縮放**：`RootView`（`SidebarView.swift`）把寬度從常數 `Theme.sidebarWidth` 改成可變的 `sidebarWidth` 屬性，`layout()` 用它取代原本處處引用的常數（常數保留當預設值與 smoke 的基準值）。交界處疊一個窄 6px 的 `SidebarResizeHandle`（`resizeHandle.frame = NSRect(x: sw-3, width: 6, ...)`），`mouseDownCanMoveWindow` 回 `false`（否則會跟第 1 點「卡片底下不可拖曳」與視窗拖曳打架）、覆寫空的 `mouseDown` 明確接手這次拖曳（NSView 預設往上傳，拖曳中途可能被吞）、`resetCursorRects` 給 resize 游標。拖曳範圍夾在 `Theme.sidebarWidthRange`（200...420，刻意放 `Theme.swift` 而非 `RootView`，因為 `Preferences.sidebarWidth` 的 getter 也要用、`RootView` 是 `@MainActor` 類別型別但 `Preferences` 不是，放常數型別裡兩邊都能用，不會有 actor isolation 警告）；放開滑鼠才透過 `onSidebarWidthChange` 存進 `Preferences.sidebarWidth`（UserDefaults），下次啟動 `BrowserWindowController.init` 讀回來餵給 `root.sidebarWidth`。smoke 用合成的 `NSEvent.mouseEvent` + `window.sendEvent` 走真實 hit-test 路徑（跟雙擊 bar 的測法一樣），測完要把寬度與 Preferences 都還原成預設值，否則後面假設預設寬度的檢查（卡片四周 8px 那段）會跟著壞掉。
 
-26. **History 視窗**（`HistoryWindow.swift`）：跟 Command Palette 不同，這是一般標題列 NSWindow（不是覆蓋層），因為要瀏覽/刪除整份歷史而不只是挑一筆。`HistoryWindowController` 持有 `HistoryStore`，每次 `show()` 才重新讀取（不即時跟著歷史變化），依搜尋欄內容用 `store.search` 或取最近 `displayLimit`（300）筆，再依日期分組（Today / Yesterday / 日期標頭 `HistoryDayHeaderView`）成 `HistoryRowView` 塞進 `NSStackView`（Auto Layout 撐高度，`listDoc` 用 `isFlipped` 讓捲動從頂端開始，寬度綁 `scroll.contentView.widthAnchor`）。列 hover 顯示刪除按鈕（跟 `TabRowView.closeButton` 同一招：`NSTrackingArea` + alpha）。`HistoryStore.delete(_:)` 以 `url + visitedAt` 比對刪單筆；`clear(after:)` 清全部（nil）或清「造訪時間晚於等於 cutoff」的那些，供 Last Hour / Today / All Time 用。**清除前的確認彈 `NSAlert`**（標題 + `NSPopUpButton` 選範圍）包成 `BrowserWindowController.clearHistoryPrompt`（跟 `Tab.authPrompt` 同一招的可替換 static closure），smoke 才能不跳出真的模態視窗。選單新增「History」（`AppDelegate.buildMenu`：Show All History ⌘Y、Clear History…）；Command Palette 動作表加 `history` / `clearHistory`。**smoke 要注意**：`showHistory()` 會 `makeKeyAndOrderFront` 搶走 key window，測完要關視窗並把主視窗叫回 key，否則會像 Little/切換器一樣因為 key window 跑掉而間接讓後面的檢查不穩；另外點歷史開新 Tab 的測試要先避開「唯一的全新空白 Tab 會被重用」規則（第 23 點），先多開一個 Tab 再測。
+26. **History 視窗**（`HistoryWindow.swift`，外觀仿 Arc 的 history 頁）：跟 Command Palette 不同，這是一般標題列 NSWindow（不是覆蓋層），因為要瀏覽/刪除整份歷史而不只是挑一筆。`HistoryWindowController` 持有 `HistoryStore`，每次 `show()` 才重新讀取（不即時跟著歷史變化），依搜尋欄內容用 `store.search` 或取最近 `displayLimit`（300）筆，依日期分組成 `HistoryDayCardView`（日期標頭文字 + 白色圓角卡片，卡片內是當天的 `HistoryRowView` 用 `NSStackView` 疊起來、列間一條 1px 分隔線；頁面底色 `Theme.historyBackground` 淺灰，卡片白底仿 Arc 的「卡片浮在淺灰頁面上」）。一列：核取方塊、時間、favicon（`HistoryEntry.favicon` PNG Data；`BrowserWindowController.tabChanged` 比照 `PinStore.remember` 的做法，把 `tab.favicon` 轉 PNG 後用 `HistoryStore.updateFavicon(url:favicon:)` 補到該網址最近一筆——record() 當下通常還沒抓到，不是記錄時另外發網路請求；`record()` 同網址覆寫最後一筆時要保留原本的 favicon，否則重新整理會把它洗掉）、沒有 favicon 就退回網域字首字母的圓形色塊、標題/網域、右側「⋯」選單（Open in New Tab / Delete，取代原本 hover 才出現的 x）。**多選**（仿 Arc）：核取方塊只負責選取（`onToggleSelect`，不觸發開啟；點列本身仍是開啟），`HistoryWindowController.selected`（`Set<EntryID>`，以 `url+visitedAt` 當 key）在 `reload()` 時跟現有清單取交集避免殘留；有勾選時搜尋欄會換成選取工具列（`HistoryView.setSelectionCount`：✕ 取消全部、「N selected」、Open、Delete），Open/Delete 完成後清空選取並換回搜尋欄。`HistoryStore.delete(_:)` 以 `url + visitedAt` 比對刪單筆；`clear(after:)` 清全部（nil）或清「造訪時間晚於等於 cutoff」的那些，供底部「Clear History…」的 Last Hour / Today / All Time 用（跟多選的 Delete 不同，這個有二次確認）。**清除前的確認彈 `NSAlert`**（標題 + `NSPopUpButton` 選範圍）包成 `BrowserWindowController.clearHistoryPrompt`（跟 `Tab.authPrompt` 同一招的可替換 static closure），smoke 才能不跳出真的模態視窗。選單新增「History」（`AppDelegate.buildMenu`：Show All History ⌘Y、Clear History…）；Command Palette 動作表加 `history` / `clearHistory`。**smoke 要注意**：`showHistory()` 會 `makeKeyAndOrderFront` 搶走 key window，測完要關視窗並把主視窗叫回 key，否則會像 Little/切換器一樣因為 key window 跑掉而間接讓後面的檢查不穩；另外點歷史開新 Tab 的測試要先避開「唯一的全新空白 Tab 會被重用」規則（第 23 點），先多開一個 Tab 再測。
 
 ## 驗證狀況
-- smoke 391/391 通過（macOS 26 / Swift 6.2.4）；accounts.google.com 登入頁載入成功（含 favicon）。
+- smoke 405/405 通過（macOS 26 / Swift 6.2.4）；accounts.google.com 登入頁載入成功（含 favicon）。
 - 冷啟動與已執行時 `open -a` 開外部連結已用打包的 .app 實測（session.json 有新 Tab）。
 - Google 實際帳密登入與重開後保持登入：已實測，正常。
 - 尚未在真實視窗手動驗證：真實 Option+點連結的手感（smoke 已送合成的 Option 滑鼠事件進 WKWebView）、外部連結走 Little 的實際流程（需設為預設瀏覽器）、Little 視窗拖曳/雙擊/縮放手感、實際把它設為預設瀏覽器、真實鍵盤的 ⌘= 放大、拖曳視窗手感、紅綠燈位置、側邊欄隱藏時滑鼠實際移到左上角的紅綠燈淡入淡出、全螢幕進出、捲動手感、下載、HTTP 驗證對話框、全螢幕影片、History 視窗的真實捲動/hover 刪除手感。
