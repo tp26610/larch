@@ -101,6 +101,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc func zoomOut() { controller.zoomOut() }
     @objc func zoomReset() { controller.zoomReset() }
     @objc func copyURL() { controller.copyURL() }
+    @objc func showHistory() { controller.showHistory() }
+    @objc func clearHistory() { controller.confirmClearHistory() }
 
     func buildMenu() -> NSMenu {
         let main = NSMenu()
@@ -166,6 +168,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             item("Reload", #selector(reload), "r", target: me),
             item("Back", #selector(goBack), "[", target: me),
             item("Forward", #selector(goForward), "]", target: me),
+        ])
+        add("History", [
+            item("Show All History", #selector(showHistory), "y", target: me),
+            .separator(),
+            item("Clear History…", #selector(clearHistory), target: me),
         ])
         add("Window", [
             item("Minimize", #selector(NSWindow.performMiniaturize(_:)), "m"),
