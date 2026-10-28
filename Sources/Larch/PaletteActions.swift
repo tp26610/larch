@@ -60,6 +60,10 @@ enum PaletteActions {
                       isAvailable: hasPage, run: { $0.openActiveTabInLittle() }),
         PaletteAction(id: "inspector", title: fixed("Open Web Inspector"), keywords: "devtools developer console inspect", shortcut: nil,
                       isAvailable: { $0.canOpenInspector }, run: { $0.openInspector() }),
+        PaletteAction(id: "history", title: fixed("Show All History"), keywords: "history past visited browsing", shortcut: "⌘Y",
+                      isAvailable: always, run: { $0.showHistory() }),
+        PaletteAction(id: "clearHistory", title: fixed("Clear History…"), keywords: "delete erase browsing data", shortcut: nil,
+                      isAvailable: always, run: { $0.confirmClearHistory() }),
     ]
 
     static func find(_ id: String) -> PaletteAction? { all.first { $0.id == id } }

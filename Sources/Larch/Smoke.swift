@@ -345,6 +345,8 @@ enum Smoke {
         try await findZoomChecks(server, app)
         try await authChecks(server, app)
         try await historyChecks(server, app)
+        try await historyWindowChecks(server, app)
+        try await historyMenuChecks(server, app)
         try await closeKeyChecks(server, app)
         try await littleChecks(server, app)
         try await littleRoutingChecks(server, app)
@@ -541,6 +543,92 @@ extension Smoke {
         try FileManager.default.createDirectory(at: bad.directory, withIntermediateDirectories: true)
         try Data("garbage".utf8).write(to: bad.directory.appendingPathComponent(HistoryStore.fileName))
         check("壞檔回到空歷史", HistoryStore(storage: bad).entries.isEmpty)
+    }
+}
+
+extension Smoke {
+    /// History 視窗：瀏覽、搜尋、開啟、刪除單筆、清除歷史（獨立 controller，資料可控）。
+    static func historyWindowChecks(_ server: FixtureServer, _ app: AppDelegate) async throws {
+        print("History 視窗")
+        let c = BrowserWindowController(dataStore: .nonPersistent(), storage: tempStorage("historywindow"), autosave: false)
+        let tm = c.tabs
+        tm.history?.record(url: URL(string: "https://example.com/alpha")!, title: "Alpha Page")
+        tm.history?.record(url: URL(string: "https://example.com/beta")!, title: "Beta Page")
+        tm.history?.record(url: URL(string: "https://example.com/gamma")!, title: "Gamma Page")
+
+        check("動作 Show All History 一律可用", PaletteActions.find("history")?.isAvailable(c) == true)
+        check("動作 Clear History… 一律可用", PaletteActions.find("clearHistory")?.isAvailable(c) == true)
+
+        c.showHistory()
+        guard let hw = c.historyWindow else {
+            check("開啟 History 視窗", false)
+            return
+        }
+        check("開啟 History 視窗", hw.window?.isVisible == true && hw.window?.title == "History")
+        check("列出三筆，依最新在前分在 Today 底下", hw.rowViews.count == 4
+              && (hw.rowViews[0] as? HistoryDayHeaderView)?.text == "Today"
+              && (hw.rowViews[1] as? HistoryRowView)?.titleText == "Gamma Page"
+              && (hw.rowViews[2] as? HistoryRowView)?.titleText == "Beta Page"
+              && (hw.rowViews[3] as? HistoryRowView)?.titleText == "Alpha Page", "\(hw.rowViews.count)")
+
+        // 搜尋：直接呼叫 show() 觸發重新整理，等同輸入框觸發 searchChanged。
+        hw.searchField.stringValue = "beta"
+        hw.show()
+        check("搜尋過濾", hw.rowViews.count == 2 && (hw.rowViews[1] as? HistoryRowView)?.titleText == "Beta Page")
+        hw.searchField.stringValue = "no-such-entry"
+        hw.show()
+        check("搜尋無結果", hw.rowViews.isEmpty)
+        hw.searchField.stringValue = ""
+        hw.show()
+        check("清空搜尋恢復全部", hw.rowViews.count == 4)
+
+        // 點擊開啟：在新 Tab 導航到該網址（先多開一個 Tab，避免被「唯一的全新空白 Tab」重用規則吃掉）。
+        tm.newTab()
+        let before = tm.tabs.count
+        (hw.rowViews[1] as? HistoryRowView)?.onOpen?()
+        check("點擊歷史開新 Tab", tm.tabs.count == before + 1 && tm.activeTab?.requestedURL?.absoluteString == "https://example.com/gamma")
+
+        // 刪除單筆：從 store 移除、視窗重新整理。
+        (hw.rowViews[2] as? HistoryRowView)?.onDelete?()
+        check("刪除單筆後從 store 移除", tm.history?.entries.contains { $0.title == "Beta Page" } == false)
+        check("刪除後視窗不再列出該筆", !hw.rowViews.contains { ($0 as? HistoryRowView)?.titleText == "Beta Page" })
+
+        // 清除歷史：取消不變動。
+        BrowserWindowController.clearHistoryPrompt = { nil }
+        let countBeforeCancel = tm.history?.entries.count
+        c.confirmClearHistory()
+        check("取消清除歷史不變動", tm.history?.entries.count == countBeforeCancel)
+
+        // 清除歷史：按鈕走 onClearRequested → controller 確認 → 全部清除。
+        BrowserWindowController.clearHistoryPrompt = { .all }
+        hw.clearButton.performClick(nil)
+        check("Clear History 按鈕清除全部", tm.history?.entries.isEmpty == true && hw.rowViews.isEmpty)
+
+        // 依時間範圍清除：只清最近一小時內的那些。
+        tm.history?.record(url: URL(string: "https://example.com/old")!, title: "Old Page", at: Date().addingTimeInterval(-7200))
+        tm.history?.record(url: URL(string: "https://example.com/new")!, title: "New Page")
+        BrowserWindowController.clearHistoryPrompt = { .lastHour }
+        c.confirmClearHistory()
+        check("只清最近一小時：保留兩小時前的那筆", tm.history?.entries.map(\.title) == ["Old Page"])
+        check("視窗跟著重新整理", hw.rowViews.count == 2 && (hw.rowViews[1] as? HistoryRowView)?.titleText == "Old Page")
+
+        hw.window?.close()
+        c.window.close()
+    }
+
+    /// History 選單與 ⌘Y：走真實選單，用的是 app.controller 本身（會暫時搶走 key window，測完要還給主視窗）。
+    static func historyMenuChecks(_ server: FixtureServer, _ app: AppDelegate) async throws {
+        print("History 選單與快捷鍵")
+        let c = app.controller!
+        let tm = c.tabs
+        check("⌘Y 走選單開啟 History 視窗", press("y", .command, in: c.window) && c.historyWindow?.window?.isVisible == true)
+        let before = tm.history?.entries.count
+        BrowserWindowController.clearHistoryPrompt = { nil } // 取消；避免清掉前面測試留下的歷史
+        app.clearHistory()
+        check("Clear History… 選單（取消）不變動筆數", tm.history?.entries.count == before)
+        c.historyWindow?.window?.close()
+        c.window.makeKeyAndOrderFront(nil)
+        check("關閉 History 視窗後主視窗回到 key window", c.window.isKeyWindow)
     }
 }
 

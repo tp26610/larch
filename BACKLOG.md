@@ -16,7 +16,7 @@
 
 ## 已知缺口（未排序）
 - 邊用邊記的問題放這裡
-- 歷史 UI、清除歷史/瀏覽資料
+- ⌘+點連結不會開新 Tab（`Tab.decidePolicyFor` 只處理 Option+點擊轉 Little，沒有處理 ⌘+點擊開新背景 Tab 的情況；真正的 Safari/Chrome 會開新 Tab）
 - 資料夾圖示/顏色、釘選「重設為原網址」、拖曳到資料夾上懸停自動展開、多選
 - 下載：可取消、下載清單；目前只顯示最新一筆
 - 說明頁上的上一頁/下一頁行為未驗證
@@ -39,3 +39,4 @@
 - Little Arc：Option+點連結、外部連結（預設瀏覽器）預設走 Little（File 選單可關）、加到 Tabs 搬移同一個 WKWebView、多視窗、Esc/⌘W/⌘O/⌘Return、命令列動作 Open in Little Window；順手修掉冷啟動多一個空白 Tab
 - Ctrl+Tab 最近使用（MRU）切換：快速按、按住顯示清單、連按/反向、放開確認、Esc、閒置自動確認；命令列動作 Switch to Previous Tab
 - Favicon 抓不到時（頁面沒有 `<link rel="icon">`，網域自己的 `/favicon.ico` 也 404，常見於 Google OAuth 登入/同意過場頁如 accounts.google.com）失敗再往上一層網域（eTLD+1 簡化版，排除 IPv4/localhost）試一次 `/favicon.ico`
+- History 視窗（獨立視窗，`HistoryWindow.swift`）：搜尋欄 + 依日期分組（Today / Yesterday / 日期）的清單、hover 顯示刪除單筆、底部「Clear History…」依範圍（Last Hour / Today / All Time）清除（`HistoryStore.delete` / `clear(after:)`）；選單新增「History」（⌘Y 開啟、Clear History…）、Command Palette 動作 Show All History / Clear History…

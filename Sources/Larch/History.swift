@@ -11,7 +11,7 @@ private struct HistoryFile: Codable {
     var entries: [HistoryEntry]
 }
 
-/// 瀏覽歷史：本機 JSON，上限 3000 筆、超過裁到 2500（沿用 Electron 版）。尚無 UI，之後給 Command Palette 用。
+/// 瀏覽歷史：本機 JSON，上限 3000 筆、超過裁到 2500（沿用 Electron 版）。Command Palette 搜尋與 HistoryWindow 的管理 UI 都用這個。
 @MainActor
 final class HistoryStore {
     static let fileName = "history.json"
@@ -51,6 +51,24 @@ final class HistoryStore {
             if out.count >= limit { break }
         }
         return out
+    }
+
+    /// 刪除一筆（以 url + visitedAt 比對；同網址不同造訪時間視為不同的一筆）。
+    func delete(_ entry: HistoryEntry) {
+        entries.removeAll { $0.url == entry.url && $0.visitedAt == entry.visitedAt }
+        saver.schedule { [weak self] in self?.save() }
+    }
+
+    /// 清除歷史；cutoff 為 nil 清全部，否則只清造訪時間晚於等於 cutoff 的那些（「最近一小時 / 今天」）。
+    func clear(after cutoff: Date? = nil) {
+        guard let cutoff else {
+            entries.removeAll()
+            saver.schedule { [weak self] in self?.save() }
+            return
+        }
+        let t = cutoff.timeIntervalSince1970
+        entries.removeAll { $0.visitedAt >= t }
+        saver.schedule { [weak self] in self?.save() }
     }
 
     func save() {

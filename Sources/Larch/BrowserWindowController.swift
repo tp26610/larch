@@ -659,6 +659,57 @@ final class BrowserWindowController: NSObject, NSTextFieldDelegate, NSWindowDele
         tabs.restoreLast()
     }
 
+    // MARK: History 視窗
+
+    private(set) var historyWindow: HistoryWindowController?
+
+    enum HistoryClearRange { case lastHour, today, all }
+
+    /// 清除歷史前的確認（範圍 + 是否清除）；取消回傳 nil。測試可替換，避免真的彈出模態對話框。
+    static var clearHistoryPrompt: @MainActor () -> HistoryClearRange? = {
+        let alert = NSAlert()
+        alert.messageText = "Clear History"
+        alert.informativeText = "This removes browsing history. It can't be undone."
+        let popup = NSPopUpButton(frame: NSRect(x: 0, y: 0, width: 220, height: 24))
+        popup.addItems(withTitles: ["Last Hour", "Today", "All Time"])
+        popup.selectItem(at: 2)
+        alert.accessoryView = popup
+        alert.addButton(withTitle: "Clear History")
+        alert.addButton(withTitle: "Cancel")
+        guard alert.runModal() == .alertFirstButtonReturn else { return nil }
+        switch popup.indexOfSelectedItem {
+        case 0: return .lastHour
+        case 1: return .today
+        default: return .all
+        }
+    }
+
+    @objc func showHistory() {
+        guard let history = tabs.history else { return }
+        let hw = historyWindow ?? makeHistoryWindow(history)
+        hw.show()
+    }
+
+    private func makeHistoryWindow(_ history: HistoryStore) -> HistoryWindowController {
+        let hw = HistoryWindowController(store: history)
+        hw.onOpen = { [weak self] url in self?.openInNewTab(url) }
+        hw.onClearRequested = { [weak self] in self?.confirmClearHistory() }
+        historyWindow = hw
+        return hw
+    }
+
+    @objc func confirmClearHistory() {
+        guard let history = tabs.history, let range = Self.clearHistoryPrompt() else { return }
+        let cutoff: Date?
+        switch range {
+        case .lastHour: cutoff = Date().addingTimeInterval(-3600)
+        case .today: cutoff = Calendar.current.startOfDay(for: Date())
+        case .all: cutoff = nil
+        }
+        history.clear(after: cutoff)
+        historyWindow?.refresh()
+    }
+
     @objc func goBack() { targetTab?.webView.goBack() }
     @objc func goForward() { targetTab?.webView.goForward() }
     @objc func reload() {
