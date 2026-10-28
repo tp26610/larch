@@ -1,7 +1,9 @@
 # Backlog
 
 ## 接下來（依序）
-1. Spaces（仿 Arc；尚未開工，以下是預訂的設計起點）
+1. ⌘+點連結不會開新 Tab（`Tab.decidePolicyFor` 只處理 Option+點擊轉 Little，沒有處理 ⌘+點擊開新背景 Tab 的情況；真正的 Safari/Chrome 會開新 Tab）
+2. Split View：把一個 Tab 拖到另一個 Tab 上（或拖到卡片邊緣），兩個 Tab 並排顯示在同一個視窗（見截圖 `docs/split-view-reference.png`，Edge/Arc 都有類似功能）。需要想清楚：卡片區域要能切兩塊、拖放判定（拖到哪裡算「要並排」）、Tab 列與 closedStack/session 怎麼表示「這兩個 Tab 現在並排」、切回單一畫面的手勢。
+3. Spaces（仿 Arc；尚未開工，以下是預訂的設計起點）
    - 資料模型：Space = 名稱、顏色（取代固定的鼠尾草綠，由該色推導 hover / active / 進度條等配色，確保白字對比）、可選 emoji、自己的釘選區（含巢狀資料夾）與自己的一般 Tab。
    - 登入：所有 Space 先共用同一個 `WKWebsiteDataStore`；資料結構預留「Space 指定獨立 data store 識別碼」的欄位（只留欄位與註解，不實作）。
    - 切換：側邊欄底部一列 Space 切換列（圓點或 emoji，目前高亮，右側「+」）；Ctrl+1…9 切換（不佔用 ⌘1…⌘9）；側邊欄兩指橫滑（若穩定再做）；切換不重新載入頁面（各 Space 的 WKWebView 保留，只顯示/隱藏），過場動畫 ≤ 200ms。
@@ -9,15 +11,13 @@
    - Command Palette：新增 New / Rename / Switch to / Move Tab to Space 動作；一般模式的 Tab 與釘選搜尋跨所有 Space（結果標示所屬 Space），選到其他 Space 的項目先切過去。
    - 還原：關閉 Tab 堆疊（⌘⇧T）維持全域，還原回原本的 Space；session restore 記住最後所在的 Space 與各 Space 的 Tab / 選中項；外部連結開在目前的 Space。
    - 遷移：既有 `pins.json` / `session.json` 無損遷移到預設 Space「Personal」（色 #699987），需壞檔容錯與 smoke 檢查。
-2. 從 Arc 匯入：把 Arc 的 Spaces、置頂 Tab 與資料夾（含巢狀）、名稱匯入 Larch；不匯入登入狀態（Brian 確認不需要）。待調查：Arc 本機資料位置與格式（推測在 `~/Library/Application Support/Arc/` 底下的 sidebar JSON，需實際確認）；先做唯讀解析並預覽再匯入，不修改 Arc 的資料；依賴 Spaces 的資料結構，在 Spaces 之後做。
+4. 從 Arc 匯入：把 Arc 的 Spaces、置頂 Tab 與資料夾（含巢狀）、名稱匯入 Larch；不匯入登入狀態（Brian 確認不需要）。待調查：Arc 本機資料位置與格式（推測在 `~/Library/Application Support/Arc/` 底下的 sidebar JSON，需實際確認）；先做唯讀解析並預覽再匯入，不修改 Arc 的資料；依賴 Spaces 的資料結構，在 Spaces 之後做。
 
 ## 想法（低優先，沒有必做理由）
 - 書籤：Arc 本身也沒有傳統書籤，釘選 Tab 與巢狀資料夾已取代；之後有具體需求再提升。
-- Split View：把一個 Tab 拖到另一個 Tab 上（或拖到卡片邊緣），兩個 Tab 並排顯示在同一個視窗（見截圖 `docs/split-view-reference.png`，Edge/Arc 都有類似功能）。需要想清楚：卡片區域要能切兩塊、拖放判定（拖到哪裡算「要並排」）、Tab 列與 closedStack/session 怎麼表示「這兩個 Tab 現在並排」、切回單一畫面的手勢。
 
 ## 已知缺口（未排序）
 - 邊用邊記的問題放這裡
-- ⌘+點連結不會開新 Tab（`Tab.decidePolicyFor` 只處理 Option+點擊轉 Little，沒有處理 ⌘+點擊開新背景 Tab 的情況；真正的 Safari/Chrome 會開新 Tab）
 - 資料夾圖示/顏色、釘選「重設為原網址」、拖曳到資料夾上懸停自動展開、多選
 - 下載：可取消、下載清單；目前只顯示最新一筆
 - 說明頁上的上一頁/下一頁行為未驗證
