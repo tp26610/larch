@@ -679,7 +679,13 @@ extension Smoke {
         BrowserWindowController.clearHistoryPrompt = { nil } // 取消；避免清掉前面測試留下的歷史
         app.clearHistory()
         check("Clear History… 選單（取消）不變動筆數", tm.history?.entries.count == before)
-        c.historyWindow?.window?.close()
+
+        // History 視窗為 key window 時，⌘W（固定 target 的選單項）應關閉它本身，絕不動主視窗的 Tab。
+        let tabCountBeforeW = tm.tabs.count
+        check("History 視窗為 key window", c.historyWindow?.window?.isKeyWindow == true)
+        check("⌘W 關閉 History 視窗本身", press("w", .command, in: c.historyWindow!.window!) && c.historyWindow?.window?.isVisible == false)
+        check("⌘W 關閉 History 視窗不動 Tab", tm.tabs.count == tabCountBeforeW)
+
         c.window.makeKeyAndOrderFront(nil)
         check("關閉 History 視窗後主視窗回到 key window", c.window.isKeyWindow)
     }
