@@ -213,7 +213,7 @@ final class TabManager {
         a.splitPartner = b
         b.splitPartner = a
         a.onChange?(a)
-        b.onChange?(b)
+        b.onChange?(b) // 配對成立後要再通知一次：上面 breakSplit 通知的是解除舊配對時的狀態
         activeTab = a
         stamp(a)
         onStructureChange?() // 側邊欄要重排成並排的一列
@@ -223,8 +223,7 @@ final class TabManager {
     /// 取消分割，回到單一畫面。
     func unsplit(_ tab: Tab) {
         guard tab.splitPartner != nil else { return }
-        breakSplit(tab)
-        tab.onChange?(tab)
+        breakSplit(tab) // 已通知兩邊 onChange
         onStructureChange?() // 側邊欄要拆回兩個獨立列
         onActiveChange?()
     }
@@ -235,5 +234,6 @@ final class TabManager {
             partner.onChange?(partner)
         }
         tab.splitPartner = nil
+        tab.onChange?(tab)
     }
 }
