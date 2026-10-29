@@ -619,6 +619,8 @@ final class BrowserWindowController: NSObject, NSTextFieldDelegate, NSWindowDele
     @objc func closeCurrentTab() {
         // History 視窗為 key window 時，⌘W 關閉它本身，絕不動主視窗的 Tab。
         if let hw = historyWindow, hw.window?.isKeyWindow == true { hw.close(); return }
+        // Task Manager 視窗為 key window 時同理，見 CLAUDE.md 第 26 點的教訓。
+        if let tmw = taskManagerWindow, tmw.window?.isKeyWindow == true { tmw.close(); return }
         // Little 為 key window 時，⌘W 只關 Little，絕不動主視窗的 Tab。
         if let little = keyLittle { little.close(); return }
         if let tab = tabs.activeTab { tabs.close(tab) }
@@ -747,6 +749,26 @@ final class BrowserWindowController: NSObject, NSTextFieldDelegate, NSWindowDele
         }
         history.clear(after: cutoff)
         historyWindow?.refresh()
+    }
+
+    // MARK: Task Manager 視窗
+
+    private(set) var taskManagerWindow: TaskManagerWindowController?
+
+    @objc func showTaskManager() {
+        let tmw = taskManagerWindow ?? makeTaskManagerWindow()
+        tmw.show()
+    }
+
+    private func makeTaskManagerWindow() -> TaskManagerWindowController {
+        let tmw = TaskManagerWindowController(tabs: tabs)
+        tmw.onSelect = { [weak self] tab in self?.tabs.select(tab) }
+        tmw.onEndProcess = { [weak self] tab in
+            self?.tabs.close(tab)
+            self?.taskManagerWindow?.reload()
+        }
+        taskManagerWindow = tmw
+        return tmw
     }
 
     @objc func goBack() { targetTab?.webView.goBack() }

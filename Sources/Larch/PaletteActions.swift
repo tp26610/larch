@@ -66,6 +66,8 @@ enum PaletteActions {
                       isAvailable: always, run: { $0.showHistory() }),
         PaletteAction(id: "clearHistory", title: fixed("Clear History…"), keywords: "delete erase browsing data", shortcut: nil,
                       isAvailable: always, run: { $0.confirmClearHistory() }),
+        PaletteAction(id: "taskManager", title: fixed("Show Task Manager"), keywords: "memory process cpu performance", shortcut: nil,
+                      isAvailable: always, run: { $0.showTaskManager() }),
     ]
 
     static func find(_ id: String) -> PaletteAction? { all.first { $0.id == id } }

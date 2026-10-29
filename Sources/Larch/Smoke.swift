@@ -353,6 +353,7 @@ enum Smoke {
         try await historyChecks(server, app)
         try await historyWindowChecks(server, app)
         try await historyMenuChecks(server, app)
+        try await taskManagerWindowChecks(server, app)
         try await closeKeyChecks(server, app)
         try await littleChecks(server, app)
         try await littleRoutingChecks(server, app)
@@ -694,6 +695,52 @@ extension Smoke {
 
         c.window.makeKeyAndOrderFront(nil)
         check("關閉 History 視窗後主視窗回到 key window", c.window.isKeyWindow)
+    }
+
+    /// Task Manager 視窗：列出一般 Tab、記憶體文字格式、End Process 關閉分頁、key window 時 ⌘W 關視窗本身不動 Tab。
+    static func taskManagerWindowChecks(_ server: FixtureServer, _ app: AppDelegate) async throws {
+        print("Task Manager 視窗")
+        let c = app.controller!
+        let tm = c.tabs
+        while tm.tabs.count > 1 { tm.close(tm.tabs.last!) } // 從乾淨狀態開始，方便算筆數
+        let a = tm.newTab(url: server.url("/a"))
+        let b = tm.newTab(url: server.url("/b"))
+        _ = await wait { a.isLoading == false && b.isLoading == false }
+
+        check("動作 Show Task Manager 一律可用", PaletteActions.find("taskManager")?.isAvailable(c) == true)
+
+        c.showTaskManager()
+        guard let tmw = c.taskManagerWindow else {
+            check("開啟 Task Manager 視窗", false)
+            return
+        }
+        check("開啟 Task Manager 視窗", tmw.window?.isVisible == true && tmw.window?.title == "Task Manager")
+        check("列數等於目前 Tab 數", tmw.rows.count == tm.tabs.count, "\(tmw.rows.count) vs \(tm.tabs.count)")
+        check("每列記憶體文字是「— 或 N MB」格式", tmw.rows.allSatisfy { $0.memoryText == "—" || $0.memoryText.hasSuffix(" MB") },
+              "\(tmw.rows.map(\.memoryText))")
+
+        let beforeEnd = tm.tabs.count
+        let target = tmw.rows.first { $0.tab === b }
+        target?.onEndProcess?()
+        check("End Process 關閉對應分頁", tm.tabs.count == beforeEnd - 1 && !tm.tabs.contains { $0 === b })
+        check("End Process 後視窗立即重新整理，列數同步減少", tmw.rows.count == tm.tabs.count)
+
+        guard let other = tm.tabs.first(where: { $0 !== tm.activeTab }) else {
+            check("點列切換到該分頁", false, "沒有第二個 Tab 可切換")
+            return
+        }
+        tmw.rows.first { $0.tab === other }?.onSelect?()
+        check("點列切換到該分頁", tm.activeTab === other)
+
+        // Task Manager 視窗為 key window 時，⌘W（固定 target 的選單項）應關閉它本身，絕不動主視窗的 Tab。
+        tmw.window?.makeKeyAndOrderFront(nil)
+        let tabCountBeforeW = tm.tabs.count
+        check("Task Manager 視窗為 key window", tmw.window?.isKeyWindow == true)
+        check("⌘W 關閉 Task Manager 視窗本身", press("w", .command, in: tmw.window!) && tmw.window?.isVisible == false)
+        check("⌘W 關閉 Task Manager 視窗不動 Tab", tm.tabs.count == tabCountBeforeW)
+
+        c.window.makeKeyAndOrderFront(nil)
+        check("關閉 Task Manager 視窗後主視窗回到 key window", c.window.isKeyWindow)
     }
 }
 
