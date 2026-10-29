@@ -41,6 +41,7 @@ InputNormalizer.swift            網址/搜尋判斷（對應 my-browser util.js
 Storage.swift                    Application Support JSON 讀寫（容錯）+ Debouncer
 SessionStore.swift               重開還原 Tab（session.json）；HistoryStore 在 History.swift
 HistoryWindow.swift              History 視窗（仿 Arc：日期卡片、搜尋、多選 Open/Delete、Clear History…）
+TaskManagerWindow.swift          Task Manager 視窗（仿 Arc：列出一般 Tab 的記憶體用量、End Process 關閉分頁）
 DownloadManager.swift            WKDownload → 下載資料夾，重名加序號
 ErrorPage.swift                  載入失敗說明頁（全部跳脫、CSP 禁腳本）
 FindBar.swift                    頁內尋找列 + ZoomStore（以 host 記縮放，存 UserDefaults）
@@ -101,12 +102,14 @@ Smoke.swift                      FixtureServer（本機假網站）+ smoke 檢�
 
 27. **Split View**（仿 Arc 的分割畫面）：拖一個一般 Tab 到另一個一般 Tab 列的中間（25%~75%，`BrowserWindowController.resolveDrop` 的 `.tab(let id)?` case，邊緣仍是原本的重排）→ `TabManager.split(_:with:)`。資料模型是 `Tab.splitPartner`（`weak var`，互指，只在未釘選的一般 Tab 之間成立）；`close(_:)` 與 `pin(_:)` 會先 `breakSplit` 解除配對（關掉或釘選其中一半，另一半自動回到單一畫面）。**卡片**：`CardView.showSplit(left:right:onUnsplit:)` 固定 50/50、中間 1px `SplitDividerView`（延續第 1 點：卡片底下不可拖曳視窗）、右上角退出按鈕；`layout()` 覆寫 `relayout()` 在卡片縮放時維持比例（沒有用 autoresizingMask，因為無法讓兩塊精確維持 50/50）。左右順序固定依 `tabs.tabs` 清單順序（不是誰是 activeTab），切到配對中的另一半畫面不會跳動；切到第三個 Tab 回到單一畫面，但配對本身還在，切回去又恢復。**側邊欄**：配對的兩個 Tab 顯示成同一列、左右並排兩顆膠囊（`SplitPairRowView`，內部一個水平 `NSStackView` 裝兩個既有的 `TabRowView`，`.fillEqually`），而不是疊成兩個全寬列——這是看過 Arc 實際畫面後補上的，原本以為卡片分割兩塊就夠了。`rows[tab.id]` 字典仍是每個 Tab 各自一個 `TabRowView`（menu/rename/close 邏輯不變），只有 `rebuildRows()` 組 `ordered` 陣列時把配對的兩個包進 `SplitPairRowView` 再塞進去。`SidebarView.rowViews` / `sidebarRows` 因此要攤平（遇到 `SplitPairRowView` 展開成 `[left, right]`），且**拖曳落點判定原本只比對 y 區間**（假設一欄一列），兩個並排的配對列現在共用同一個 y 區間，改成 y 與 x 都要落在該列的 frame 內才算 over，否則永遠只會命中先遍歷到的那個。`TabRowView` 新增 `splitBadge`（右下角小圖示，`tab?.splitPartner != nil` 時顯示）。`split()` / `unsplit()` 除了 `onActiveChange?()` 也要呼叫 `onStructureChange?()`（側邊欄要重新分組成並排/拆開，只改 `isActive` 不夠）；`rebuildRows()` 對配對兩邊各自算 `isActive`（而不是只有被拖的那個），比原本「只有 `activeChanged()` 知道 partner」更穩，不依賴呼叫順序。**退出分割**：卡片按鈕、Command Palette 動作 `unsplit`（Exit Split View）都呼叫 `BrowserWindowController.exitSplitView()` → `tabs.unsplit(tab)`；**把配對中的 Tab 拖去重排**（不是拖到中間要求配對）也視同拖出 Split View：`TabManager.moveTab` 先 `breakSplit`，若被拖的或它原本的另一半正是 `activeTab` 就額外呼叫 `onActiveChange?()` 讓卡片跟著回到單一畫面（`onStructureChange?()` 只會重排側邊欄，不會動卡片）。已知缺口：固定 50/50 不可拖曳調整、視窗重開不記得配對（session 不存）、側邊欄拖曳排序時的插入線沒有考慮半寬（仍畫滿版寬）。**曾踩過的坑**：`breakSplit` 一開始只通知 partner（`partner.onChange?(partner)`），沒通知被解除配對的 tab 自己；`split()`/`unsplit()` 當下沒事是因為各自在外面又補呼叫了一次該 tab 的 `onChange`，但 `moveTab`（拖去重排視同拖出）只呼叫 `breakSplit(tab)` 就結束，導致被拖出的 tab 自己那列的 `splitBadge` 沒有重新 `update()`、卡在顯示的狀態。修法是讓 `breakSplit` 一律通知兩邊（`tab.onChange?(tab)` 也放進去），`split()`/`unsplit()` 外面的重複呼叫跟著拿掉。**這類「配對/連動狀態」的教訓**：任何會動到 `splitPartner` 的地方，兩邊都要各自觸發一次 `onChange`，不能假設呼叫端會記得幫忙補。
 
+28. **Task Manager**（`TaskManagerWindow.swift`，仿 Arc）：架構仿 History 視窗（一般標題列 NSWindow，不是覆蓋層），但資料即時變化，不是一次性讀取——`TaskManagerWindowController.show()` 立刻 `reload()` 一次並啟動 1 秒 `Timer`，`windowWillClose`（`NSWindowDelegate`）停止並清空 timer，避免視窗關閉後背景還在空轉。**v1 範圍只列主視窗的一般 Tab**（`tabs.tabs`），不含 Little 視窗的 Tab（Little 的 Tab 不在這個清單裡，架構上要另外接線，之後有需要再補）。**取得 process 資訊靠兩個私有介面**：`WKWebView` 的 `_webProcessIdentifier`（私有 KVC，`responds(to:)` 防呆，取不到該列記憶體顯示「—」，不影響其他列）取得 WebContent process 的 PID；`proc_pidinfo(PROC_PIDTASKINFO)`（系統 libproc）查常駐記憶體（RSS）。這跟 UA 補字尾（第 2 點）、Open Web Inspector 用 `_inspector`（第 17 點）是同一類「用私有介面補齊功能，版本變動就重新驗證」的風險，不是新的做法。**一分頁一個 process 的假設**：2026-10-29 PoC 驗證過，就算兩個分頁開同一個網域也拿到不同 PID，所以 UI 不用處理「多分頁共用一個 process」的合併顯示（跟 Chrome/Arc 可能共用 renderer process 的行為不同，WKWebView 預設設定下看起來是分開的，但這只驗證過少量分頁、同一次執行，不保證所有情境都這樣）。依記憶體從高到低排序，`reload()` 整批重建列（跟 History 一樣，Tab 數量不多，效能沒問題）。**「End Process」按鈕＝關閉分頁**（呼叫既有的 `tabs.close(tab)`），**不是真的 kill -9**：WebContent process 被 kill 後 WKWebView 的後續行為沒驗證過（可能顯示當機頁、可能需要手動 reload），關閉分頁一樣能釋放資源、行為可預期，風險低。點列本身切換到該分頁。選單加在「Window」（`AppDelegate.buildMenu`，無預設快捷鍵）；Command Palette 動作表加 `taskManager`。**`closeCurrentTab()` 補上 key window 判斷**（跟第 26 點 History/Little 一樣的教訓）：Task Manager 視窗為 key window 時 ⌘W 關視窗本身，不動主視窗 Tab。
+
 ## 驗證狀況
-- smoke 430/430 通過（macOS 26 / Swift 6.2.4）；accounts.google.com 登入頁載入成功（含 favicon）。
+- smoke 451/451 通過（macOS 26 / Swift 6.2.4）；accounts.google.com 登入頁載入成功（含 favicon）。
 - 冷啟動與已執行時 `open -a` 開外部連結已用打包的 .app 實測（session.json 有新 Tab）。
 - Google 實際帳密登入與重開後保持登入：已實測，正常。
 - Split View：卡片左右分割、側邊欄配對列並排顯示，已在真實視窗用滑鼠拖曳實測。
-- 尚未在真實視窗手動驗證：真實 Option+點連結的手感（smoke 已送合成的 Option 滑鼠事件進 WKWebView）、外部連結走 Little 的實際流程（需設為預設瀏覽器）、Little 視窗拖曳/雙擊/縮放手感、實際把它設為預設瀏覽器、真實鍵盤的 ⌘= 放大、拖曳視窗手感、紅綠燈位置、側邊欄隱藏時滑鼠實際移到左上角的紅綠燈淡入淡出、全螢幕進出、捲動手感、下載、HTTP 驗證對話框、全螢幕影片、History 視窗的真實捲動/hover 刪除手感。
+- 尚未在真實視窗手動驗證：真實 Option+點連結的手感（smoke 已送合成的 Option 滑鼠事件進 WKWebView）、外部連結走 Little 的實際流程（需設為預設瀏覽器）、Little 視窗拖曳/雙擊/縮放手感、實際把它設為預設瀏覽器、真實鍵盤的 ⌘= 放大、拖曳視窗手感、紅綠燈位置、側邊欄隱藏時滑鼠實際移到左上角的紅綠燈淡入淡出、全螢幕進出、捲動手感、下載、HTTP 驗證對話框、全螢幕影片、History 視窗的真實捲動/hover 刪除手感、Task Manager 視窗 1 秒刷新的真實手感（記憶體數字變化順不順、UI 會不會抖動）。
 
 ## Backlog
 見 `BACKLOG.md`；開工前先讀，完成後移到「已完成」。

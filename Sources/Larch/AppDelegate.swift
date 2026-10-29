@@ -105,6 +105,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc func selectNextTab() { controller.selectNextTab() }
     @objc func showHistory() { controller.showHistory() }
     @objc func clearHistory() { controller.confirmClearHistory() }
+    @objc func showTaskManager() { controller.showTaskManager() }
 
     func buildMenu() -> NSMenu {
         let main = NSMenu()
@@ -181,6 +182,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         add("Window", [
             item("Minimize", #selector(NSWindow.performMiniaturize(_:)), "m"),
             item("Zoom", #selector(NSWindow.performZoom(_:))),
+            .separator(),
+            item("Task Manager", #selector(showTaskManager), target: me),
         ])
         return main
     }
