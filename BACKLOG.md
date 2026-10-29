@@ -13,6 +13,10 @@
 
 ## 想法（低優先，沒有必做理由）
 - 書籤：Arc 本身也沒有傳統書籤，釘選 Tab 與巢狀資料夾已取代；之後有具體需求再提升。
+- Cmd+T 命令列優化（對照 Arc 截圖整理，2026-10-29；依標題比對 Tab/Pin/History 已經在 `PaletteSearch.results`／`Fuzzy.score` 實作且經 Brian 實測確認 OK，以下是另外三個還沒做的方向，之後要做再從這裡挑）：
+  1. **Google 打字建議（ghost 候選）**：Arc 在搜尋列最上面會即時列出幾筆 Google 建議（如輸入「固定支出」會跑出「固定支出保障倍數」「固定支出表格」「固定支出 とは」），這是呼叫搜尋引擎的 suggest API（如 `https://www.google.com/complete/search?client=firefox&q=...`），Larch 目前只有一行固定的「Search: 輸入文字」。做法：`PaletteSearch` 或 `CommandPaletteView` 加非同步請求（debounce，避免每個按鍵都打網路），回來後插在 `openOrSearch` 之後、Tab/History 之前；要處理請求順序錯亂（晚送出的查詢先回來）與離線/失敗時不顯示。
+  2. **預設選取邏輯**：Arc 在有強匹配的既有項目（如標題完全等於輸入）時，預設高亮選的是那筆資料而不是「Search with Google」；Larch 目前 `results()` 永遠把 `openOrSearch` 放第一筆，`CommandPaletteView` 預設選取第一列。要討論怎麼定義「夠強的匹配」（如標題完全相等、或 `Fuzzy.score` 超過某門檻）才改變預設選取，避免打幾個字就跳走、選錯。
+  3. **空白輸入時的豐富建議列表**：Arc 空白時混合顯示釘選/最近常用（含內容摘要文字、Switch to Tab／Archived 等標籤），Larch 目前空白時只列「目前開啟中的 Tab」（`results()` 的 `!q.isEmpty` 才查歷史）。要做的話是空白時也納入釘選與最近歷史（依最近造訪/次數排序），但「內容摘要」這塊 Arc 應該是另外存了頁面文字索引，Larch 目前沒有、工程量較大，可以先不做，只做清單來源擴充。
 
 ## 已知缺口（未排序）
 - 邊用邊記的問題放這裡
