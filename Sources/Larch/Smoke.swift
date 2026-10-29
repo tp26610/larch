@@ -192,6 +192,12 @@ enum Smoke {
         check("切回第一個", tm.activeTab === t1 && c.root.card.subviews.first === t1.webView)
         check("網址列跟著切換", c.addressField.stringValue == server.url("/a").absoluteString)
 
+        print("⌘⇧[ / ⌘⇧] 切換 Tab")
+        check("⌘⇧] 切到下一個", press("}", [.command, .shift], in: c.window) && tm.activeTab === t2)
+        check("⌘⇧] 首尾相接回到第一個", press("}", [.command, .shift], in: c.window) && tm.activeTab === t1)
+        check("⌘⇧[ 往前繞到最後一個", press("{", [.command, .shift], in: c.window) && tm.activeTab === t2)
+        tm.select(t1)
+
         print("上一頁 / 下一頁 / 重新整理")
         c.submitAddress(server.url("/c").absoluteString)
         check("中文標題不亂碼", await wait { t1.pageTitle == "頁面 C" })

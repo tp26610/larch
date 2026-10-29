@@ -109,6 +109,12 @@ final class TabManager {
         onActiveChange?()
     }
 
+    /// 依側邊欄清單順序切到上一個／下一個 Tab（首尾相接）。
+    func selectAdjacent(offset: Int) {
+        guard tabs.count > 1, let active = activeTab, let i = tabs.firstIndex(where: { $0 === active }) else { return }
+        select(tabs[(i + offset + tabs.count) % tabs.count])
+    }
+
     func close(_ tab: Tab) {
         guard let index = tabs.firstIndex(where: { $0 === tab }) else { return }
         breakSplit(tab)
