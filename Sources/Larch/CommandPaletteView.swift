@@ -93,6 +93,21 @@ private final class PaletteFlippedView: NSView {
     override var mouseDownCanMoveWindow: Bool { false }
 }
 
+/// NSTextFieldCell 預設把文字畫在 bounds 頂端，frame 比文字高時會偏上（Actions chip 曾因此看起來貼著 pill 上緣）。
+private final class VerticallyCenteredTextFieldCell: NSTextFieldCell {
+    override func titleRect(forBounds rect: NSRect) -> NSRect {
+        let size = cellSize(forBounds: rect)
+        var r = rect
+        r.origin.y += max(0, (rect.height - size.height) / 2)
+        r.size.height = size.height
+        return r
+    }
+
+    override func drawInterior(withFrame cellFrame: NSRect, in controlView: NSView) {
+        super.drawInterior(withFrame: titleRect(forBounds: cellFrame), in: controlView)
+    }
+}
+
 /// 蓋在整個視窗內容上的命令列覆蓋層：⌘T 搜尋 + 開新 Tab、⌘L 在目前 Tab 導航；Tab 鍵進入動作模式。
 /// 與資料來源無關：由 `provider` 供應候選、`onPick` 處理選取。
 @MainActor
@@ -160,6 +175,13 @@ final class CommandPaletteView: NSView, NSTextFieldDelegate {
         field.lineBreakMode = .byTruncatingTail
         field.cell?.usesSingleLineMode = true
         field.delegate = self
+        let chipCell = VerticallyCenteredTextFieldCell(textCell: "Actions")
+        chipCell.isEditable = false
+        chipCell.isSelectable = false
+        chipCell.isBezeled = false
+        chipCell.drawsBackground = false
+        chipCell.alignment = .center
+        chip.cell = chipCell
         chip.font = .systemFont(ofSize: 12, weight: .semibold)
         chip.textColor = Theme.paletteText
         chip.alignment = .center
