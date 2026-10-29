@@ -162,10 +162,21 @@ final class BrowserWindowController: NSObject, NSTextFieldDelegate, NSWindowDele
             }
         }
         ordered.append(DividerRowView())
+        var handledSplit = Set<UUID>()
         for tab in tabs.tabs where tab.pinID == nil {
+            if handledSplit.contains(tab.id) { continue }
             let row = rows[tab.id] ?? makeRow(tab)
             row.isActive = tab === tabs.activeTab
-            ordered.append(row)
+            if let partner = tab.splitPartner {
+                // Split View 配對：兩個一般 Tab 並排顯示成一列，左右順序跟卡片一致（依 tabs 清單順序）。
+                let partnerRow = rows[partner.id] ?? makeRow(partner)
+                partnerRow.isActive = partner === tabs.activeTab
+                handledSplit.insert(partner.id)
+                let tabIsLeft = (tabs.tabs.firstIndex { $0 === tab } ?? 0) < (tabs.tabs.firstIndex { $0 === partner } ?? 0)
+                ordered.append(SplitPairRowView(left: tabIsLeft ? row : partnerRow, right: tabIsLeft ? partnerRow : row))
+            } else {
+                ordered.append(row)
+            }
         }
         sidebar.setRows(ordered)
     }
@@ -300,7 +311,7 @@ final class BrowserWindowController: NSObject, NSTextFieldDelegate, NSWindowDele
 
     // MARK: 拖曳
 
-    enum DropDest { case pins(parent: UUID?, index: Int), regular(before: UUID?) }
+    enum DropDest { case pins(parent: UUID?, index: Int), regular(before: UUID?), split(UUID) }
 
     /// 依被拖的東西與游標位置算出落點。nil = 不能放。
     func resolveDrop(_ dragged: SidebarItem, over: SidebarItem?, fraction f: CGFloat) -> DropPlan? {
@@ -336,6 +347,10 @@ final class BrowserWindowController: NSObject, NSTextFieldDelegate, NSWindowDele
             return f < 0.5 ? pinsDest(parent: parentID, index: loc.index, .before) : pinsDest(parent: parentID, index: loc.index + 1, .after)
         case .tab(let id)?:
             guard let i = regular.firstIndex(where: { $0.id == id }) else { return nil }
+            // 另一個一般 Tab 拖到中間（25%~75%）→ 並排顯示（Split View），兩側維持原本的重排行為。
+            if case .tab(let draggedID) = dragged, draggedID != id, f >= 0.25, f <= 0.75 {
+                return DropPlan(indicator: .into) { [weak self] in self?.execute(dragged, .split(id)) }
+            }
             if f < 0.5 { return regularDest(before: id, .before) }
             return regularDest(before: i + 1 < regular.count ? regular[i + 1].id : nil, .after)
         }
@@ -361,6 +376,8 @@ final class BrowserWindowController: NSObject, NSTextFieldDelegate, NSWindowDele
                 let t = tabs.newTab(url: url, activate: false)
                 tabs.moveTab(t, before: target)
             }
+        case (.tab(let id), .split(let targetID)):
+            if let a = tab(withID: id), let b = tab(withID: targetID) { tabs.split(a, with: b) }
         default: break
         }
     }
@@ -368,9 +385,18 @@ final class BrowserWindowController: NSObject, NSTextFieldDelegate, NSWindowDele
     private func activeChanged() {
         closeFind()
         scheduleSessionSave()
-        for tab in tabs.tabs { rows[tab.pinID ?? tab.id]?.isActive = tab === tabs.activeTab }
+        let partner = tabs.activeTab?.splitPartner
+        for tab in tabs.tabs { rows[tab.pinID ?? tab.id]?.isActive = tab === tabs.activeTab || tab === partner }
         if let tab = tabs.activeTab {
-            root.card.show(tab.webView)
+            if let partner {
+                // 左右順序依一般 Tab 清單的順序，與誰是「目前 Tab」無關，切換到另一半時畫面不會跳動。
+                let order = tabs.tabs
+                let tabIsLeft = (order.firstIndex { $0 === tab } ?? 0) < (order.firstIndex { $0 === partner } ?? 0)
+                let (left, right) = tabIsLeft ? (tab, partner) : (partner, tab)
+                root.card.showSplit(left.webView, right.webView) { [weak self] in self?.exitSplitView() }
+            } else {
+                root.card.show(tab.webView)
+            }
             syncToolbar(tab)
             syncLoading(tab, animated: false)
             window.title = tab.displayTitle
@@ -549,6 +575,11 @@ final class BrowserWindowController: NSObject, NSTextFieldDelegate, NSWindowDele
 
     func closeOtherTabs() {
         for t in otherRegularTabs() { tabs.close(t) }
+    }
+
+    /// 動作「Exit Split View」：目前 Tab 回到單一畫面。
+    func exitSplitView() {
+        if let tab = tabs.activeTab { tabs.unsplit(tab) }
     }
 
     @objc func duplicateTab() {

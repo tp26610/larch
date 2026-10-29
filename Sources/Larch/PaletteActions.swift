@@ -32,6 +32,8 @@ enum PaletteActions {
                       isAvailable: hasTab, run: { $0.closeCurrentTab() }),
         PaletteAction(id: "closeOthers", title: fixed("Close Other Tabs"), keywords: "clean up remove", shortcut: nil,
                       isAvailable: { $0.otherRegularTabs().count > 0 }, run: { $0.closeOtherTabs() }),
+        PaletteAction(id: "unsplit", title: fixed("Exit Split View"), keywords: "split unsplit combine side by side", shortcut: nil,
+                      isAvailable: { $0.tabs.activeTab?.splitPartner != nil }, run: { $0.exitSplitView() }),
         PaletteAction(id: "duplicate", title: fixed("Duplicate Tab"), keywords: "copy clone", shortcut: "⌃⇧D",
                       isAvailable: hasPage, run: { $0.duplicateTab() }),
         PaletteAction(id: "reload", title: fixed("Reload Tab"), keywords: "refresh", shortcut: "⌘R",

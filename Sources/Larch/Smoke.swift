@@ -356,6 +356,7 @@ enum Smoke {
         try await trafficLightChecks(server, app)
         try await loadingChecks(server, app)
         try await pinChecks(server, app)
+        try await splitChecks(server, app)
         try await actionChecks(server, app)
     }
 }
@@ -1160,6 +1161,132 @@ extension Smoke {
         _ = c.sidebar.draggingUpdated(info)
         check("performDragOperation 執行放入資料夾", c.sidebar.performDragOperation(info) && t.pinID != nil && tm.pins.find(t.pinID!)?.parent?.id == folder.id)
         if let dir = ProcessInfo.processInfo.environment["LARCH_SHOT_DIR"] { try? await sidebarShot(server, dir) }
+        c.window.close()
+    }
+
+    /// Split View：拖到另一個一般 Tab 中間 → 並排顯示；退出分割；關閉/釘選其中一半會解除配對。
+    static func splitChecks(_ server: FixtureServer, _ app: AppDelegate) async throws {
+        print("Split View")
+        let c = BrowserWindowController(dataStore: .nonPersistent(), storage: tempStorage("split"), autosave: false)
+        let tm = c.tabs
+        let a = tm.newTab(url: server.url("/a"))
+        let b = tm.newTab(url: server.url("/b"))
+        let cc = tm.newTab(url: server.url("/c"))
+        _ = await wait { a.pageTitle == "Page A" && b.pageTitle == "Page B" && cc.pageTitle == "頁面 C" }
+        c.window.setContentSize(NSSize(width: 1000, height: 700))
+        c.root.layoutSubtreeIfNeeded()
+
+        // 邊緣（25% 之前/75% 之後）仍是重排，不是分割。
+        check("拖到邊緣（10%）→ 判定為重排而非分割", { c.resolveDrop(.tab(a.id), over: .tab(b.id), fraction: 0.1)?.indicator == .before }())
+        c.resolveDrop(.tab(a.id), over: .tab(b.id), fraction: 0.1)?.commit()
+        check("邊緣重排不建立配對", a.splitPartner == nil && b.splitPartner == nil)
+
+        // 中間（25%~75%）→ 分割。
+        check("拖到中間 → 判定為分割（into）", { c.resolveDrop(.tab(a.id), over: .tab(b.id), fraction: 0.5)?.indicator == .into }())
+        c.resolveDrop(.tab(a.id), over: .tab(b.id), fraction: 0.5)?.commit()
+        check("分割後互相配對", a.splitPartner === b && b.splitPartner === a)
+        check("分割後被拖的那個變成目前 Tab", tm.activeTab === a)
+        check("卡片顯示 Split View", c.root.card.isSplit)
+        let rowA = c.sidebar.rowViews.first { $0.tab === a }
+        let rowB = c.sidebar.rowViews.first { $0.tab === b }
+        let rowC = c.sidebar.rowViews.first { $0.tab === cc }
+        check("側邊欄兩列都標成使用中", rowA?.isActive == true && rowB?.isActive == true)
+        check("配對列顯示分割徽章", rowA?.isShowingSplitBadge == true && rowB?.isShowingSplitBadge == true)
+        check("沒分割的 Tab 不顯示徽章", rowC?.isShowingSplitBadge == false)
+        check("側邊欄把配對顯示成同一列、左右並排", rowA?.superview?.superview is SplitPairRowView && rowA?.superview === rowB?.superview)
+
+        // 切到另一半，仍是 Split View；切到第三個 Tab 回到單一畫面但配對保留；切回去又恢復。
+        tm.select(b)
+        check("切到另一半仍是 Split View", c.root.card.isSplit && tm.activeTab === b)
+        tm.select(cc)
+        check("切到第三個 Tab → 回到單一畫面", !c.root.card.isSplit)
+        check("配對仍保留（沒有被清掉）", a.splitPartner === b && b.splitPartner === a)
+        tm.select(a)
+        check("切回配對的一半 → 又回到 Split View", c.root.card.isSplit)
+
+        // 命令列動作 Exit Split View。
+        let p = c.root.palette
+        func cmd(_ sel: Selector) -> Bool { p.control(p.field, textView: NSTextView(), doCommandBy: sel) }
+        c.openPalette(prefill: nil)
+        _ = cmd(#selector(NSResponder.insertTab(_:)))
+        let ids = p.items.compactMap { item -> String? in if case .runAction(let id) = item.action { return id } else { return nil } }
+        check("配對時命令列列出 Exit Split View", ids.contains("unsplit"))
+        p.dismiss()
+
+        // 退出分割（卡片按鈕走同一條 exitSplitView 路徑）。
+        c.exitSplitView()
+        check("退出分割 → 回到單一畫面、互相解除配對", !c.root.card.isSplit && a.splitPartner == nil && b.splitPartner == nil)
+
+        // 關閉其中一半會解除另一半的配對。
+        c.resolveDrop(.tab(a.id), over: .tab(b.id), fraction: 0.5)?.commit()
+        check("重新分割成功", a.splitPartner === b)
+        tm.close(b)
+        check("關閉一半 → 另一半解除配對", a.splitPartner == nil)
+
+        // 釘選其中一半會解除配對。
+        let d = tm.newTab(url: server.url("/a"))
+        _ = await wait { d.pageTitle == "Page A" }
+        c.resolveDrop(.tab(d.id), over: .tab(a.id), fraction: 0.5)?.commit()
+        check("再次分割成功", d.splitPartner === a)
+        tm.pin(d)
+        check("釘選一半 → 雙方都解除配對", d.splitPartner == nil && a.splitPartner == nil)
+
+        // 中間分隔線延續第 1 點：不可拖曳視窗。用分隔線自己的 frame 算落點，避免估算誤差。
+        c.resolveDrop(.tab(a.id), over: .tab(cc.id), fraction: 0.5)?.commit()
+        c.root.layoutSubtreeIfNeeded()
+        if let df = c.root.card.dividerFrameForTesting {
+            let cardFrame = c.root.card.frame
+            let point = NSPoint(x: cardFrame.minX + df.midX, y: cardFrame.minY + df.midY)
+            let dividerHit = c.root.hitTest(point)
+            check("Split View 中間分隔線不可拖曳視窗", dividerHit is SplitDividerView && dividerHit?.mouseDownCanMoveWindow == false)
+        } else {
+            check("Split View 中間分隔線存在", false)
+        }
+
+        c.window.close()
+        try await splitDragGeometryChecks(server)
+    }
+
+    /// 真實的 draggingUpdated / performDragOperation 路徑：拖一個一般 Tab 到另一個一般 Tab 中間。
+    static func splitDragGeometryChecks(_ server: FixtureServer) async throws {
+        let c = BrowserWindowController(dataStore: .nonPersistent(), storage: tempStorage("split-drag"), autosave: false)
+        let tm = c.tabs
+        let a = tm.newTab(url: server.url("/a"))
+        let b = tm.newTab(url: server.url("/b"))
+        _ = await wait { a.pageTitle == "Page A" && b.pageTitle == "Page B" }
+        c.window.setContentSize(NSSize(width: 1000, height: 700))
+        c.root.layoutSubtreeIfNeeded()
+        c.sidebar.layoutSubtreeIfNeeded()
+        guard let bRow = c.sidebar.rowViews.first(where: { $0.tab === b }) else {
+            check("拖曳測試前置：Tab 列存在", false); return
+        }
+        let pb = NSPasteboard(name: NSPasteboard.Name("larch-test-\(UUID().uuidString)"))
+        pb.clearContents()
+        pb.setString(SidebarItem.tab(a.id).payload!, forType: SidebarItem.pasteboardType)
+        let loc = bRow.convert(NSPoint(x: bRow.bounds.midX, y: bRow.bounds.height * 0.5), to: nil)
+        let info = FakeDraggingInfo(pasteboard: pb, location: loc)
+        check("draggingUpdated：拖到另一個 Tab 中間 → 允許", c.sidebar.draggingUpdated(info) == .move)
+        check("performDragOperation 執行分割", c.sidebar.performDragOperation(info) && a.splitPartner === b)
+
+        // 配對後並排成同一列，左右兩半共用同一個 y 區間；真實像素座標驗證拖曳落點能用 x 分辨出是哪一半。
+        let cc = tm.newTab(url: server.url("/c"))
+        _ = await wait { cc.pageTitle == "頁面 C" }
+        c.sidebar.layoutSubtreeIfNeeded()
+        guard let rowA = c.sidebar.rowViews.first(where: { $0.tab === a }), let rowB2 = c.sidebar.rowViews.first(where: { $0.tab === b }) else {
+            check("拖曳測試前置：配對後的列存在", false); c.window.close(); return
+        }
+        check("配對後 rowA 在 rowB 左邊", rowA.convert(rowA.bounds, to: nil).minX < rowB2.convert(rowB2.bounds, to: nil).minX)
+        let pb2 = NSPasteboard(name: NSPasteboard.Name("larch-test-\(UUID().uuidString)"))
+        pb2.clearContents()
+        pb2.setString(SidebarItem.tab(cc.id).payload!, forType: SidebarItem.pasteboardType)
+        let loc2 = rowB2.convert(NSPoint(x: rowB2.bounds.midX, y: rowB2.bounds.height * 0.9), to: nil)
+        let info2 = FakeDraggingInfo(pasteboard: pb2, location: loc2)
+        _ = c.sidebar.draggingUpdated(info2)
+        _ = c.sidebar.performDragOperation(info2)
+        // TabRowView 本身不是 flipped view，列內 y 大 = 畫面上方；listContainer 是 flipped，換算後靠近列上緣 → fraction 偏小 → 判定為「b 之前」。
+        // 重點不是 before/after，是驗證落點解析成 b（右半邊）而不是 a（左半邊）：cc 緊鄰 b，而不是沒反應或跑到別的地方。
+        check("拖到 b 的列（右半邊）解析成 b 而非 a → cc 緊鄰 b",
+              tm.tabs.firstIndex { $0 === cc } == (tm.tabs.firstIndex { $0 === b } ?? -99) - 1, "\(tm.tabs.map { $0.displayURL?.path ?? "" })")
         c.window.close()
     }
 

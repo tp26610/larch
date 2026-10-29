@@ -62,8 +62,22 @@ final class SidebarView: NSView {
     var onResolveDrop: ((SidebarItem, SidebarItem?, CGFloat) -> DropPlan?)?
 
     override var mouseDownCanMoveWindow: Bool { true }
-    var rowViews: [TabRowView] { stack.arrangedSubviews.compactMap { $0 as? TabRowView } }
-    var sidebarRows: [any SidebarRow] { stack.arrangedSubviews.compactMap { $0 as? any SidebarRow } }
+    /// 所有 Tab 列，含並排成一列的 Split View 配對（展開成各自獨立的兩個）。
+    var rowViews: [TabRowView] {
+        stack.arrangedSubviews.flatMap { v -> [TabRowView] in
+            if let row = v as? TabRowView { return [row] }
+            if let pair = v as? SplitPairRowView { return [pair.left, pair.right] }
+            return []
+        }
+    }
+    /// 拖曳落點判定用：並排的 Split View 配對展開成各自獨立的兩個（有各自的 frame，靠 x 座標分辨）。
+    var sidebarRows: [any SidebarRow] {
+        stack.arrangedSubviews.flatMap { v -> [any SidebarRow] in
+            if let row = v as? any SidebarRow { return [row] }
+            if let pair = v as? SplitPairRowView { return [pair.left, pair.right] }
+            return []
+        }
+    }
 
     init() {
         super.init(frame: .zero)
@@ -163,14 +177,16 @@ final class SidebarView: NSView {
     private func updateDrag(_ info: NSDraggingInfo) -> NSDragOperation {
         guard let dragged = payload(info) else { return [] }
         if let event = NSApp.currentEvent { listContainer.autoscroll(with: event) }
-        let y = listContainer.convert(info.draggingLocation, from: nil).y
+        let point = listContainer.convert(info.draggingLocation, from: nil)
+        let y = point.y
         let rows = sidebarRows
         var over: (any SidebarRow)?
         var fraction: CGFloat = 0
         var overFrame = NSRect.zero
+        // 並排的 Split View 配對共用同一個 y 區間，靠 x 座標分辨左右半邊；一般列的 frame 本來就橫跨整個寬度，x 一定會落在裡面。
         for row in rows {
             let f = row.convert(row.bounds, to: listContainer)
-            if y >= f.minY, y < f.maxY { over = row; fraction = (y - f.minY) / f.height; overFrame = f; break }
+            if y >= f.minY, y < f.maxY, point.x >= f.minX, point.x < f.maxX { over = row; fraction = (y - f.minY) / f.height; overFrame = f; break }
         }
         if over == nil, let first = rows.first, y < first.convert(first.bounds, to: listContainer).minY {
             over = first; fraction = 0; overFrame = first.convert(first.bounds, to: listContainer)
@@ -333,10 +349,23 @@ final class RootView: NSView {
     }
 }
 
+/// Split View 中間的分隔線：延續第 1 點的規則，卡片底下不可有拖曳區域。
+@MainActor
+final class SplitDividerView: NSView {
+    override var mouseDownCanMoveWindow: Bool { false }
+}
+
 /// 網頁卡片：圓角裁切；hit-test 底下不能有可拖曳視窗的視圖，否則會吞掉網頁捲動。
+/// 單一 Tab（`show`）或兩個 Tab 並排（`showSplit`，固定 50/50）；`layout()` 在卡片縮放時維持比例。
 @MainActor
 final class CardView: NSView {
     override var mouseDownCanMoveWindow: Bool { false }
+
+    private enum Mode { case single(NSView), split(NSView, NSView) }
+    private var mode: Mode?
+    private let divider = SplitDividerView()
+    private let unsplitButton = NSButton()
+    private var onUnsplit: (() -> Void)?
 
     init() {
         super.init(frame: .zero)
@@ -344,20 +373,76 @@ final class CardView: NSView {
         layer?.cornerRadius = Theme.cardRadius
         layer?.masksToBounds = true
         layer?.backgroundColor = Theme.card.cgColor
+
+        divider.wantsLayer = true
+        divider.layer?.backgroundColor = NSColor(white: 0, alpha: 0.12).cgColor
+
+        unsplitButton.isBordered = false
+        unsplitButton.image = NSImage(systemSymbolName: "arrow.down.right.and.arrow.up.left", accessibilityDescription: "Exit Split View")
+        unsplitButton.toolTip = "Exit Split View"
+        unsplitButton.contentTintColor = NSColor(white: 0.25, alpha: 1)
+        unsplitButton.wantsLayer = true
+        unsplitButton.layer?.backgroundColor = NSColor(white: 1, alpha: 0.92).cgColor
+        unsplitButton.layer?.cornerRadius = 11
+        unsplitButton.target = self
+        unsplitButton.action = #selector(unsplitClicked)
     }
 
     required init?(coder: NSCoder) { fatalError() }
 
     let loadingBar = LoadingBarView()
 
+    /// 單一 Tab 顯示。
     func show(_ webView: NSView) {
         subviews.forEach { $0.removeFromSuperview() }
-        webView.frame = bounds
-        webView.autoresizingMask = [.width, .height]
+        mode = .single(webView)
+        onUnsplit = nil
         addSubview(webView)
+        addSubview(loadingBar)
+        relayout()
+    }
+
+    /// 兩個 Tab 並排顯示（固定 50/50，中間窄分隔線），右上角按鈕退出分割。
+    func showSplit(_ left: NSView, _ right: NSView, onUnsplit: @escaping () -> Void) {
+        subviews.forEach { $0.removeFromSuperview() }
+        mode = .split(left, right)
+        self.onUnsplit = onUnsplit
+        addSubview(left)
+        addSubview(right)
+        addSubview(divider)
+        addSubview(loadingBar)
+        addSubview(unsplitButton)
+        relayout()
+    }
+
+    /// 目前是否顯示 Split View（smoke 用）。
+    var isSplit: Bool { if case .split = mode { return true } else { return false } }
+
+    /// 分隔線在卡片座標系的 frame（非分割時為 nil）；smoke 用來算出精準的 hit-test 落點。
+    var dividerFrameForTesting: NSRect? { isSplit ? divider.frame : nil }
+
+    override func layout() {
+        super.layout()
+        relayout()
+    }
+
+    private func relayout() {
+        switch mode {
+        case .single(let v):
+            v.frame = bounds
+        case .split(let left, let right):
+            let gap: CGFloat = 1
+            let half = ((bounds.width - gap) / 2).rounded(.down)
+            left.frame = NSRect(x: 0, y: 0, width: half, height: bounds.height)
+            divider.frame = NSRect(x: half, y: 0, width: gap, height: bounds.height)
+            right.frame = NSRect(x: half + gap, y: 0, width: bounds.width - half - gap, height: bounds.height)
+            unsplitButton.frame = NSRect(x: half - 11, y: bounds.height - 34, width: 22, height: 22)
+        case nil:
+            break
+        }
         // 進度條在網頁之上、貼卡片上緣（卡片圓角裁切），但不接收事件。
         loadingBar.frame = NSRect(x: 0, y: bounds.height - LoadingBarView.height, width: bounds.width, height: LoadingBarView.height)
-        loadingBar.autoresizingMask = [.width, .minYMargin]
-        addSubview(loadingBar)
     }
+
+    @objc private func unsplitClicked() { onUnsplit?() }
 }
