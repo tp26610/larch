@@ -180,12 +180,16 @@ final class TabManager {
         if let id = tab.pinID, let node = pins.find(id)?.node { unpin(node) } else { pin(tab) }
     }
 
-    /// 在一般區重排：放到指定一般 Tab 之前（nil = 最後）。
+    /// 在一般區重排：放到指定一般 Tab 之前（nil = 最後）。拖去重排（不是拖到中間要求配對）視同把它拖出 Split View，先解除配對。
     func moveTab(_ tab: Tab, before target: Tab?) {
         guard tab !== target, let from = tabs.firstIndex(where: { $0 === tab }) else { return }
+        let oldPartner = tab.splitPartner
+        breakSplit(tab)
         tabs.remove(at: from)
         if let target, let to = tabs.firstIndex(where: { $0 === target }) { tabs.insert(tab, at: to) } else { tabs.append(tab) }
         onStructureChange?()
+        // 配對的其中一半正顯示在卡片上時，解除配對要讓卡片回到單一畫面。
+        if oldPartner != nil, activeTab === tab || activeTab === oldPartner { onActiveChange?() }
     }
 
     // MARK: Split View

@@ -1243,6 +1243,11 @@ extension Smoke {
             check("Split View 中間分隔線存在", false)
         }
 
+        // 把配對中的 Tab 拖去重排（不是拖到中間要求配對）視同拖出 Split View：解除配對、卡片回到單一畫面。
+        check("拖去重排前仍是 Split View", c.root.card.isSplit && tm.activeTab === a)
+        tm.moveTab(a, before: nil)
+        check("移動（重排）解除配對、卡片回到單一畫面", a.splitPartner == nil && cc.splitPartner == nil && !c.root.card.isSplit)
+
         c.window.close()
         try await splitDragGeometryChecks(server)
     }
