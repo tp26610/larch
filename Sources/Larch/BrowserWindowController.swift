@@ -614,6 +614,8 @@ final class BrowserWindowController: NSObject, NSTextFieldDelegate, NSWindowDele
     }
 
     @objc func closeCurrentTab() {
+        // History 視窗為 key window 時，⌘W 關閉它本身，絕不動主視窗的 Tab。
+        if let hw = historyWindow, hw.window?.isKeyWindow == true { hw.close(); return }
         // Little 為 key window 時，⌘W 只關 Little，絕不動主視窗的 Tab。
         if let little = keyLittle { little.close(); return }
         if let tab = tabs.activeTab { tabs.close(tab) }
