@@ -22,6 +22,8 @@ final class Tab: NSObject, WKNavigationDelegate, WKUIDelegate {
     var pinID: UUID?
     /// Option+點連結：取消原本的導覽，交給 Little 視窗開啟。
     var onOptionClick: ((URL) -> Void)?
+    /// ⌘+點連結：取消原本的導覽，在背景開新 Tab（不搶走焦點）。
+    var onCommandClick: ((URL) -> Void)?
     /// window.open / target=_blank 在同一個 view 就地開啟（Little 視窗用）。
     var popupInPlace = false
     /// 最近使用順序：越大越近（TabManager 在選中時遞增指派；命令列與 Ctrl+Tab 用）。
@@ -132,12 +134,18 @@ final class Tab: NSObject, WKNavigationDelegate, WKUIDelegate {
         if navigationAction.targetFrame?.isMainFrame ?? true, InputNormalizer.isHTTP(navigationAction.request.url) {
             errorURL = nil
         }
-        // Option+點連結 → Little（⌘+點、一般點擊、彈出視窗與登入流程不受影響）。
+        // Option+點連結 → Little；⌘+點連結 → 背景開新 Tab（一般點擊、彈出視窗與登入流程不受影響；⌥⌘+點兩者都不攔截）。
         let mods = navigationAction.modifierFlags
         if navigationAction.navigationType == .linkActivated, mods.contains(.option), !mods.contains(.command),
            let url = navigationAction.request.url, InputNormalizer.isHTTP(url), let onOptionClick {
             decisionHandler(.cancel)
             onOptionClick(url)
+            return
+        }
+        if navigationAction.navigationType == .linkActivated, mods.contains(.command), !mods.contains(.option),
+           let url = navigationAction.request.url, InputNormalizer.isHTTP(url), let onCommandClick {
+            decisionHandler(.cancel)
+            onCommandClick(url)
             return
         }
         if navigationAction.shouldPerformDownload {

@@ -1667,11 +1667,19 @@ extension Smoke {
         check("Option+點連結：取消導覽並開 Little", decide(FakeNavAction(server.url("/b?opt"), mods: .option)) == .cancel && seen == [server.url("/b?opt")] && c.littles.count == 1)
         c.littles.first?.close()
         seen = []
-        check("⌘+點連結不受影響（放行、不開 Little）", decide(FakeNavAction(server.url("/b"), mods: .command)) == .allow && seen.isEmpty && c.littles.isEmpty)
-        check("⌥⌘+點也不攔截", decide(FakeNavAction(server.url("/b"), mods: [.option, .command])) == .allow && seen.isEmpty)
-        check("一般點擊不受影響", decide(FakeNavAction(server.url("/b"))) == .allow && seen.isEmpty)
+        var seenCmd: [URL] = []
+        let prevCmd = page.onCommandClick
+        page.onCommandClick = { seenCmd.append($0); prevCmd?($0) }
+        check("⌘+點連結：取消導覽並背景開新 Tab（不切換焦點）", decide(FakeNavAction(server.url("/b?cmd"), mods: .command)) == .cancel && seenCmd == [server.url("/b?cmd")]
+              && tm.tabs.count == tabsN + 1 && tm.activeTab === page && tm.tabs[(tm.tabs.firstIndex { $0 === page } ?? 0) + 1].requestedURL == server.url("/b?cmd"))
+        tm.close(tm.tabs[(tm.tabs.firstIndex { $0 === page } ?? 0) + 1])
+        seenCmd = []
+        check("⌥⌘+點兩者都不攔截", decide(FakeNavAction(server.url("/b"), mods: [.option, .command])) == .allow && seen.isEmpty && seenCmd.isEmpty)
+        check("一般點擊不受影響", decide(FakeNavAction(server.url("/b"))) == .allow && seen.isEmpty && seenCmd.isEmpty)
         check("Option 但不是點連結（重新整理/表單）不攔截", decide(FakeNavAction(server.url("/b"), type: .reload, mods: .option)) == .allow && seen.isEmpty)
+        check("⌘但不是點連結不攔截", decide(FakeNavAction(server.url("/b"), type: .reload, mods: .command)) == .allow && seenCmd.isEmpty)
         check("Option+點非 http(s) 連結不開 Little", decide(FakeNavAction(URL(string: "mailto:a@b.c")!, mods: .option)) == .cancel && seen.isEmpty && c.littles.isEmpty)
+        check("⌘+點非 http(s) 連結不開背景 Tab", decide(FakeNavAction(URL(string: "mailto:a@b.c")!, mods: .command)) == .cancel && seenCmd.isEmpty && tm.tabs.count == tabsN)
         // 真實 WebKit：把帶 Option 的真實滑鼠事件送進 WKWebView（在連結座標按下/放開）。
         tm.select(page)
         c.window.makeKeyAndOrderFront(nil)

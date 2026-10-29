@@ -69,6 +69,10 @@ final class TabManager {
         tab.onPopup = { [weak self] config, opener in self?.newTab(popupConfiguration: config, after: opener) }
         tab.onRequestClose = { [weak self] tab in self?.close(tab) }
         tab.onOptionClick = { [weak self] url in self?.onOpenLittle?(url) }
+        tab.onCommandClick = { [weak self, weak tab] url in
+            guard let self, let tab else { return }
+            self.newTab(url: url, activate: false, after: tab)
+        }
     }
 
     /// 把別處（Little 視窗）的 Tab 原封不動收進清單：同一個 WKWebView，不重新載入；插在目前 Tab 之後並選中。
