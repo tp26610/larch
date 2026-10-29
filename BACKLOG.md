@@ -1,7 +1,10 @@
 # Backlog
 
 ## 接下來（依序）
-1. Spaces（仿 Arc；尚未開工，以下是預訂的設計起點）
+1. Task Manager（Arc 有這個功能；2026-10-29 做過 PoC 確認可行性，PoC 分支已清掉，結論留此；2026-10-29 調到第一優先，接下來要做）：
+   可行。驗證了兩個關鍵假設：(1) `WKWebView` 私有 KVC 屬性 `_webProcessIdentifier` 可取得每個分頁對應 WebContent process 的 PID，跟 Open Web Inspector 用 `_inspector`（見 `CLAUDE.md` 架構表 `BrowserWindowController.swift`）同一套 `responds(to:)` 防呆手法；(2) `proc_pidinfo(PROC_PIDTASKINFO)` 可查到合理的常駐記憶體（RSS）。另外測出：目前預設設定下是「一分頁一個 WebContent process」，就算同網域也拿到不同 PID（4 個分頁含 2 個同網域 apple.com 測出 4 個不同 PID）——代表 UI 不用處理多分頁共用一個 process 的合併顯示，比預期單純。
+   待排的細節：UI 位置（側邊欄列表或獨立視窗，仿 History 視窗的做法）；每列顯示網域/標題、PID、記憶體；「關閉」要等同強制關閉/reload 對應分頁而不是真的 kill -9；私有 API 隨 WebKit 版本變動的風險（跟 UA 補字尾一樣，之後要重新驗證）。
+2. Spaces（仿 Arc；尚未開工，以下是預訂的設計起點）
    - 資料模型：Space = 名稱、顏色（取代固定的鼠尾草綠，由該色推導 hover / active / 進度條等配色，確保白字對比）、可選 emoji、自己的釘選區（含巢狀資料夾）與自己的一般 Tab。
    - 登入：所有 Space 先共用同一個 `WKWebsiteDataStore`；資料結構預留「Space 指定獨立 data store 識別碼」的欄位（只留欄位與註解，不實作）。
    - 切換：側邊欄底部一列 Space 切換列（圓點或 emoji，目前高亮，右側「+」）；Ctrl+1…9 切換（不佔用 ⌘1…⌘9）；側邊欄兩指橫滑（若穩定再做）；切換不重新載入頁面（各 Space 的 WKWebView 保留，只顯示/隱藏），過場動畫 ≤ 200ms。
@@ -9,13 +12,10 @@
    - Command Palette：新增 New / Rename / Switch to / Move Tab to Space 動作；一般模式的 Tab 與釘選搜尋跨所有 Space（結果標示所屬 Space），選到其他 Space 的項目先切過去。
    - 還原：關閉 Tab 堆疊（⌘⇧T）維持全域，還原回原本的 Space；session restore 記住最後所在的 Space 與各 Space 的 Tab / 選中項；外部連結開在目前的 Space。
    - 遷移：既有 `pins.json` / `session.json` 無損遷移到預設 Space「Personal」（色 #699987），需壞檔容錯與 smoke 檢查。
-2. 從 Arc 匯入：把 Arc 的 Spaces、置頂 Tab 與資料夾（含巢狀）、名稱匯入 Larch；不匯入登入狀態（Brian 確認不需要）。待調查：Arc 本機資料位置與格式（推測在 `~/Library/Application Support/Arc/` 底下的 sidebar JSON，需實際確認）；先做唯讀解析並預覽再匯入，不修改 Arc 的資料；依賴 Spaces 的資料結構，在 Spaces 之後做。
+3. 從 Arc 匯入：把 Arc 的 Spaces、置頂 Tab 與資料夾（含巢狀）、名稱匯入 Larch；不匯入登入狀態（Brian 確認不需要）。待調查：Arc 本機資料位置與格式（推測在 `~/Library/Application Support/Arc/` 底下的 sidebar JSON，需實際確認）；先做唯讀解析並預覽再匯入，不修改 Arc 的資料；依賴 Spaces 的資料結構，在 Spaces 之後做。
 
 ## 想法（低優先，沒有必做理由）
 - 書籤：Arc 本身也沒有傳統書籤，釘選 Tab 與巢狀資料夾已取代；之後有具體需求再提升。
-- **Task Manager（Arc 有這個功能，2026-10-29 做過 PoC 確認可行性，PoC 分支已清掉，結論留此）**：
-  可行。驗證了兩個關鍵假設：(1) `WKWebView` 私有 KVC 屬性 `_webProcessIdentifier` 可取得每個分頁對應 WebContent process 的 PID，跟 Open Web Inspector 用 `_inspector`（見 `CLAUDE.md` 架構表 `BrowserWindowController.swift`）同一套 `responds(to:)` 防呆手法；(2) `proc_pidinfo(PROC_PIDTASKINFO)` 可查到合理的常駐記憶體（RSS）。另外測出：目前預設設定下是「一分頁一個 WebContent process」，就算同網域也拿到不同 PID（4 個分頁含 2 個同網域 apple.com 測出 4 個不同 PID）——代表 UI 不用處理多分頁共用一個 process 的合併顯示，比預期單純。
-  待做才會知道的風險：私有 API 隨 WebKit 版本變動（跟 UA 補字尾一樣，之後要重新驗證）；UI 設計（側邊欄列表或獨立視窗）；「關閉某個 process」要等同強制關閉/reload 對應分頁而不是真的 kill -9。
 - Cmd+T 命令列優化（對照 Arc 截圖整理，2026-10-29；依標題比對 Tab/Pin/History 已經在 `PaletteSearch.results`／`Fuzzy.score` 實作且經 Brian 實測確認 OK，以下是另外三個還沒做的方向，之後要做再從這裡挑）：
   1. **Google 打字建議（ghost 候選）**：Arc 在搜尋列最上面會即時列出幾筆 Google 建議（如輸入「固定支出」會跑出「固定支出保障倍數」「固定支出表格」「固定支出 とは」），這是呼叫搜尋引擎的 suggest API（如 `https://www.google.com/complete/search?client=firefox&q=...`），Larch 目前只有一行固定的「Search: 輸入文字」。做法：`PaletteSearch` 或 `CommandPaletteView` 加非同步請求（debounce，避免每個按鍵都打網路），回來後插在 `openOrSearch` 之後、Tab/History 之前；要處理請求順序錯亂（晚送出的查詢先回來）與離線/失敗時不顯示。
   2. **預設選取邏輯**：Arc 在有強匹配的既有項目（如標題完全等於輸入）時，預設高亮選的是那筆資料而不是「Search with Google」；Larch 目前 `results()` 永遠把 `openOrSearch` 放第一筆，`CommandPaletteView` 預設選取第一列。要討論怎麼定義「夠強的匹配」（如標題完全相等、或 `Fuzzy.score` 超過某門檻）才改變預設選取，避免打幾個字就跳走、選錯。
