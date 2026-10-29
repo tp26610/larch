@@ -13,6 +13,9 @@
 
 ## 想法（低優先，沒有必做理由）
 - 書籤：Arc 本身也沒有傳統書籤，釘選 Tab 與巢狀資料夾已取代；之後有具體需求再提升。
+- **Task Manager（Arc 有這個功能，2026-10-29 做過 PoC 確認可行性，PoC 分支已清掉，結論留此）**：
+  可行。驗證了兩個關鍵假設：(1) `WKWebView` 私有 KVC 屬性 `_webProcessIdentifier` 可取得每個分頁對應 WebContent process 的 PID，跟 Open Web Inspector 用 `_inspector`（見 `CLAUDE.md` 架構表 `BrowserWindowController.swift`）同一套 `responds(to:)` 防呆手法；(2) `proc_pidinfo(PROC_PIDTASKINFO)` 可查到合理的常駐記憶體（RSS）。另外測出：目前預設設定下是「一分頁一個 WebContent process」，就算同網域也拿到不同 PID（4 個分頁含 2 個同網域 apple.com 測出 4 個不同 PID）——代表 UI 不用處理多分頁共用一個 process 的合併顯示，比預期單純。
+  待做才會知道的風險：私有 API 隨 WebKit 版本變動（跟 UA 補字尾一樣，之後要重新驗證）；UI 設計（側邊欄列表或獨立視窗）；「關閉某個 process」要等同強制關閉/reload 對應分頁而不是真的 kill -9。
 - Cmd+T 命令列優化（對照 Arc 截圖整理，2026-10-29；依標題比對 Tab/Pin/History 已經在 `PaletteSearch.results`／`Fuzzy.score` 實作且經 Brian 實測確認 OK，以下是另外三個還沒做的方向，之後要做再從這裡挑）：
   1. **Google 打字建議（ghost 候選）**：Arc 在搜尋列最上面會即時列出幾筆 Google 建議（如輸入「固定支出」會跑出「固定支出保障倍數」「固定支出表格」「固定支出 とは」），這是呼叫搜尋引擎的 suggest API（如 `https://www.google.com/complete/search?client=firefox&q=...`），Larch 目前只有一行固定的「Search: 輸入文字」。做法：`PaletteSearch` 或 `CommandPaletteView` 加非同步請求（debounce，避免每個按鍵都打網路），回來後插在 `openOrSearch` 之後、Tab/History 之前；要處理請求順序錯亂（晚送出的查詢先回來）與離線/失敗時不顯示。
   2. **預設選取邏輯**：Arc 在有強匹配的既有項目（如標題完全等於輸入）時，預設高亮選的是那筆資料而不是「Search with Google」；Larch 目前 `results()` 永遠把 `openOrSearch` 放第一筆，`CommandPaletteView` 預設選取第一列。要討論怎麼定義「夠強的匹配」（如標題完全相等、或 `Fuzzy.score` 超過某門檻）才改變預設選取，避免打幾個字就跳走、選錯。
