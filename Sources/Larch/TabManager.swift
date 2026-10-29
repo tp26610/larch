@@ -107,6 +107,7 @@ final class TabManager {
 
     func close(_ tab: Tab) {
         guard let index = tabs.firstIndex(where: { $0 === tab }) else { return }
+        breakSplit(tab)
         if let url = tab.displayURL, InputNormalizer.isHTTP(url) {
             closedStack.append(ClosedTab(url: url, customTitle: tab.customTitle, pinID: tab.pinID))
             if closedStack.count > Self.maxClosed { closedStack.removeFirst(closedStack.count - Self.maxClosed) }
@@ -153,6 +154,7 @@ final class TabManager {
     @discardableResult
     func pin(_ tab: Tab, parent: UUID? = nil, index: Int? = nil) -> PinNode? {
         guard tab.pinID == nil, let url = tab.displayURL, InputNormalizer.isHTTP(url) else { return nil }
+        breakSplit(tab)
         let title = tab.customTitle ?? (tab.pageTitle.isEmpty ? (url.host ?? url.absoluteString) : tab.pageTitle)
         let node = pins.addTab(url: url, title: title, parent: parent, index: index)
         tab.pinID = node.id
@@ -184,5 +186,40 @@ final class TabManager {
         tabs.remove(at: from)
         if let target, let to = tabs.firstIndex(where: { $0 === target }) { tabs.insert(tab, at: to) } else { tabs.append(tab) }
         onStructureChange?()
+    }
+
+    // MARK: Split View
+
+    /// 把兩個一般 Tab 並排顯示（取代各自原本的另一半），並把 a 設為目前 Tab。
+    func split(_ a: Tab, with b: Tab) {
+        guard a !== b, a.pinID == nil, b.pinID == nil,
+              tabs.contains(where: { $0 === a }), tabs.contains(where: { $0 === b }) else { return }
+        breakSplit(a)
+        breakSplit(b)
+        a.splitPartner = b
+        b.splitPartner = a
+        a.onChange?(a)
+        b.onChange?(b)
+        activeTab = a
+        stamp(a)
+        onStructureChange?() // 側邊欄要重排成並排的一列
+        onActiveChange?()
+    }
+
+    /// 取消分割，回到單一畫面。
+    func unsplit(_ tab: Tab) {
+        guard tab.splitPartner != nil else { return }
+        breakSplit(tab)
+        tab.onChange?(tab)
+        onStructureChange?() // 側邊欄要拆回兩個獨立列
+        onActiveChange?()
+    }
+
+    private func breakSplit(_ tab: Tab) {
+        if let partner = tab.splitPartner {
+            partner.splitPartner = nil
+            partner.onChange?(partner)
+        }
+        tab.splitPartner = nil
     }
 }

@@ -177,6 +177,37 @@ final class FolderRowView: NSView, SidebarRow, NSTextFieldDelegate {
     func controlTextDidEndEditing(_ obj: Notification) { finishRename(commit: true) }
 }
 
+/// Split View 配對的兩個一般 Tab 並排顯示成一列（兩個 TabRowView 各佔一半寬度）。
+/// 不是 SidebarRow：代表兩個項目而非一個，拖曳落點判定改成展開成 left/right 分別處理（見 SidebarView.sidebarRows）。
+@MainActor
+final class SplitPairRowView: NSView {
+    let left: TabRowView
+    let right: TabRowView
+    override var mouseDownCanMoveWindow: Bool { false }
+
+    init(left: TabRowView, right: TabRowView) {
+        self.left = left
+        self.right = right
+        super.init(frame: .zero)
+        translatesAutoresizingMaskIntoConstraints = false
+        heightAnchor.constraint(equalToConstant: 32).isActive = true
+        let stack = NSStackView(views: [left, right])
+        stack.orientation = .horizontal
+        stack.spacing = 4
+        stack.distribution = .fillEqually
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(stack)
+        NSLayoutConstraint.activate([
+            stack.leadingAnchor.constraint(equalTo: leadingAnchor),
+            stack.trailingAnchor.constraint(equalTo: trailingAnchor),
+            stack.topAnchor.constraint(equalTo: topAnchor),
+            stack.bottomAnchor.constraint(equalTo: bottomAnchor),
+        ])
+    }
+
+    required init?(coder: NSCoder) { fatalError() }
+}
+
 /// 釘選區與一般區之間的分隔線（也是拖曳到「釘選區末尾 / 取消釘選」的落點）。
 @MainActor
 final class DividerRowView: NSView, SidebarRow {

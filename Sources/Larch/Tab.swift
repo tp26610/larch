@@ -26,6 +26,8 @@ final class Tab: NSObject, WKNavigationDelegate, WKUIDelegate {
     var popupInPlace = false
     /// 最近使用順序：越大越近（TabManager 在選中時遞增指派；命令列與 Ctrl+Tab 用）。
     var mruSeq = 0
+    /// Split View 的另一半（互相指向）；nil 代表單獨顯示。只在一般（未釘選）Tab 之間成立。
+    weak var splitPartner: Tab?
 
     private var observations: [NSKeyValueObservation] = []
     private var faviconTask: URLSessionDataTask?

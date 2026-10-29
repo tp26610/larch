@@ -2,7 +2,7 @@
 
 ## 接下來（依序）
 1. ⌘+點連結不會開新 Tab（`Tab.decidePolicyFor` 只處理 Option+點擊轉 Little，沒有處理 ⌘+點擊開新背景 Tab 的情況；真正的 Safari/Chrome 會開新 Tab）
-2. Split View：把一個 Tab 拖到另一個 Tab 上（或拖到卡片邊緣），兩個 Tab 並排顯示在同一個視窗（見截圖 `docs/split-view-reference.png`，Edge/Arc 都有類似功能）。需要想清楚：卡片區域要能切兩塊、拖放判定（拖到哪裡算「要並排」）、Tab 列與 closedStack/session 怎麼表示「這兩個 Tab 現在並排」、切回單一畫面的手勢。
+2. Split View：把配對中的其中一個 Tab 從側邊欄拖曳出來（拖離配對列）解除並排，回到各自單一畫面（目前只有卡片上的退出按鈕與 Command Palette 動作 Exit Split View）。
 3. Spaces（仿 Arc；尚未開工，以下是預訂的設計起點）
    - 資料模型：Space = 名稱、顏色（取代固定的鼠尾草綠，由該色推導 hover / active / 進度條等配色，確保白字對比）、可選 emoji、自己的釘選區（含巢狀資料夾）與自己的一般 Tab。
    - 登入：所有 Space 先共用同一個 `WKWebsiteDataStore`；資料結構預留「Space 指定獨立 data store 識別碼」的欄位（只留欄位與註解，不實作）。
@@ -41,3 +41,4 @@
 - Ctrl+Tab 最近使用（MRU）切換：快速按、按住顯示清單、連按/反向、放開確認、Esc、閒置自動確認；命令列動作 Switch to Previous Tab
 - Favicon 抓不到時（頁面沒有 `<link rel="icon">`，網域自己的 `/favicon.ico` 也 404，常見於 Google OAuth 登入/同意過場頁如 accounts.google.com）失敗再往上一層網域（eTLD+1 簡化版，排除 IPv4/localhost）試一次 `/favicon.ico`
 - History 視窗（獨立視窗，`HistoryWindow.swift`，外觀仿 Arc）：搜尋欄 + 依日期分組（Today / Yesterday / 日期）的白色卡片清單、每列顯示真的 favicon（`HistoryStore.updateFavicon`，抓不到才退回字首字母色塊）、核取方塊多選（勾選後搜尋欄變選取工具列：Open / Delete / ✕ 取消）、每列「⋯」選單（Open in New Tab / Delete）、底部「Clear History…」依範圍（Last Hour / Today / All Time）清除（`HistoryStore.delete` / `clear(after:)`）；選單新增「History」（⌘Y 開啟、Clear History…）、Command Palette 動作 Show All History / Clear History…
+- Split View：拖一個一般 Tab 到另一個一般 Tab 中間並排顯示（固定 50/50，右上角退出按鈕，Command Palette 動作 Exit Split View）；側邊欄把配對的兩個 Tab 顯示成同一列、左右並排兩顆膠囊（不是疊成兩列）；關閉或釘選其中一半自動解除配對。已知限制：不可拖曳調整比例、視窗重開不記得配對、側邊欄拖曳排序的插入線沒考慮半寬。

@@ -17,6 +17,7 @@ final class TabRowView: NSView, NSTextFieldDelegate, SidebarRow {
 
     private let iconView = NSImageView()
     private let placeholder = NSTextField(labelWithString: "")
+    private let splitBadge = NSImageView()
     private let titleLabel = NSTextField(labelWithString: "")
     let renameField = NSTextField()
     private let closeButton = NSButton()
@@ -28,6 +29,7 @@ final class TabRowView: NSView, NSTextFieldDelegate, SidebarRow {
     var closeIconName: String { closeButton.image?.accessibilityDescription ?? "" }
     var closeToolTip: String? { closeButton.toolTip }
     var isShowingSpinner: Bool { !spinner.isHidden }
+    var isShowingSplitBadge: Bool { !splitBadge.isHidden }
     var titleText: String { titleLabel.stringValue }
     var isActive = false { didSet { refreshBackground() } }
 
@@ -84,7 +86,14 @@ final class TabRowView: NSView, NSTextFieldDelegate, SidebarRow {
         spinner.appearance = NSAppearance(named: .darkAqua) // 綠色側邊欄上顯示白色
         spinner.isHidden = true
 
-        for v in [iconView, placeholder, spinner, titleLabel, renameField, closeButton] {
+        splitBadge.image = NSImage(systemSymbolName: "rectangle.split.2x1.fill", accessibilityDescription: "Split View")
+        splitBadge.contentTintColor = Theme.text
+        splitBadge.wantsLayer = true
+        splitBadge.layer?.backgroundColor = Theme.panel.cgColor
+        splitBadge.layer?.cornerRadius = 3
+        splitBadge.isHidden = true
+
+        for v in [iconView, placeholder, spinner, splitBadge, titleLabel, renameField, closeButton] {
             v.translatesAutoresizingMaskIntoConstraints = false
             addSubview(v)
         }
@@ -101,6 +110,10 @@ final class TabRowView: NSView, NSTextFieldDelegate, SidebarRow {
             placeholder.centerYAnchor.constraint(equalTo: centerYAnchor),
             placeholder.widthAnchor.constraint(equalToConstant: 16),
             placeholder.heightAnchor.constraint(equalToConstant: 16),
+            splitBadge.trailingAnchor.constraint(equalTo: iconView.trailingAnchor, constant: 3),
+            splitBadge.bottomAnchor.constraint(equalTo: iconView.bottomAnchor, constant: 3),
+            splitBadge.widthAnchor.constraint(equalToConstant: 9),
+            splitBadge.heightAnchor.constraint(equalToConstant: 9),
             closeButton.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -6),
             closeButton.centerYAnchor.constraint(equalTo: centerYAnchor),
             closeButton.widthAnchor.constraint(equalToConstant: 20),
@@ -144,6 +157,7 @@ final class TabRowView: NSView, NSTextFieldDelegate, SidebarRow {
         placeholder.alphaValue = gray ? 0.55 : 1
         spinner.isHidden = !loading
         if loading { spinner.startAnimation(nil) } else { spinner.stopAnimation(nil) }
+        splitBadge.isHidden = tab?.splitPartner == nil
         refreshBackground()
     }
 
