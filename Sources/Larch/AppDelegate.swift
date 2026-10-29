@@ -101,6 +101,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc func zoomOut() { controller.zoomOut() }
     @objc func zoomReset() { controller.zoomReset() }
     @objc func copyURL() { controller.copyURL() }
+    @objc func selectPreviousTab() { controller.selectPreviousTab() }
+    @objc func selectNextTab() { controller.selectNextTab() }
     @objc func showHistory() { controller.showHistory() }
     @objc func clearHistory() { controller.confirmClearHistory() }
 
@@ -134,6 +136,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             item("Close Tab", #selector(closeTab), "w", target: me),
             item("Close Tab (Ctrl+W)", #selector(closeTab), "w", .control, target: me),
             item("Duplicate Tab", #selector(duplicateTab), "D", [.control, .shift], target: me),
+            item("Select Previous Tab", #selector(selectPreviousTab), "{", [.command, .shift], target: me),
+            item("Select Next Tab", #selector(selectNextTab), "}", [.command, .shift], target: me),
             item("Pin / Unpin Tab", #selector(togglePin), "d", target: me),
             item("New Folder", #selector(newFolder), "N", [.command, .shift], target: me),
             item("Restore Closed Tab", #selector(restoreTab), "T", [.command, .shift], target: me),

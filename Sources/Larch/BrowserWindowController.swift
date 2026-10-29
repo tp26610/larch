@@ -582,6 +582,9 @@ final class BrowserWindowController: NSObject, NSTextFieldDelegate, NSWindowDele
         if let tab = tabs.activeTab { tabs.unsplit(tab) }
     }
 
+    @objc func selectPreviousTab() { tabs.selectAdjacent(offset: -1) }
+    @objc func selectNextTab() { tabs.selectAdjacent(offset: 1) }
+
     @objc func duplicateTab() {
         guard let tab = tabs.activeTab, let url = tab.displayURL, InputNormalizer.isHTTP(url) else { return }
         tabs.newTab(url: url, customTitle: tab.pinID == nil ? tab.customTitle : nil, after: tab)
