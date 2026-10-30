@@ -20,6 +20,7 @@ swift build
 swift run Larch                 # 執行
 scripts/smoke.sh                    # 405 項煙霧測試，驅動真實視窗與 WKWebView（會開視窗）
 scripts/bundle.sh                   # build/Larch.app（Info.plist 含 http/https、html 宣告）
+scripts/dmg.sh                      # build/Larch-<版本>-arm64.dmg；版本號讀根目錄 VERSION（發版流程：改 VERSION、commit、打同名 tag `v<版本>`、gh release create）
 scripts/install.sh                  # 安裝到 /Applications（見 README）
 .build/debug/Larch --live-check https://accounts.google.com /tmp/out
                                     # 真實網站檢查：印標題/網址，存 /tmp/out-sidebar.png、/tmp/out-page.png
