@@ -53,11 +53,23 @@ enum PaletteSearch {
         }
     }
 
+    /// 單字詞（無空白、純英數字/連字號）輸入猜測 `<輸入>.com`，不驗證是否真的存在；純規則式。
+    private static let wordRe = try! Regex(#"^[a-z0-9-]{2,}$"#).ignoresCase()
+
+    private static func domainGuess(for q: String, alreadyURL: Bool) -> PaletteItem? {
+        guard !alreadyURL, q.wholeMatch(of: wordRe) != nil, let url = URL(string: "https://\(q.lowercased()).com") else { return nil }
+        return PaletteItem(kind: .openOrSearch, title: "Open: \(q.lowercased()).com", subtitle: url.absoluteString, action: .open(url))
+    }
+
     static func results(for query: String, tabs: [Tab], history: HistoryStore?, pins: [PinNode] = []) -> [PaletteItem] {
         let q = query.trimmingCharacters(in: .whitespacesAndNewlines)
         var items: [PaletteItem] = []
 
-        if let input = InputNormalizer.normalize(q) {
+        let normalized = InputNormalizer.normalize(q)
+        if let guess = domainGuess(for: q, alreadyURL: normalized?.kind == .url) {
+            items.append(guess)
+        }
+        if let input = normalized {
             let label = input.kind == .url ? "Open" : "Search"
             items.append(PaletteItem(kind: .openOrSearch, title: "\(label): \(q)", subtitle: input.kind == .url ? input.url.absoluteString : "Search with Google", action: .open(input.url)))
         }
