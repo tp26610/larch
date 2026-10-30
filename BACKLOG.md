@@ -1,7 +1,8 @@
 # Backlog
 
 ## 接下來（依序）
-1. Spaces（仿 Arc；尚未開工，以下是預訂的設計起點；**總估點 25**（七塊子項加總，子項各自仍遵守 1/2/3/5/8/13/21/40/? 量表，合計是例外），拆成以下七塊，個別領取）
+1. 釘選的網址操作（2026-10-30，對照 Arc 右鍵「Edit Pinned Page」子選單）：Arc 的釘選網址不會隨瀏覽跳到別處而改變，要改必須明確右鍵操作。Larch 目前行為已一致（`PinStore.remember` 只同步標題與 favicon，不動節點網址），缺的是兩個明確操作：① **Replace Pinned URL with Current**：把節點網址更新為綁定 Tab 目前的網址；② **重設為原網址**（Arc 的 Back to Pinned URL）：把 Tab 導回節點網址，標題/favicon 也還原。另 Arc 還有「Edit…」可手動編輯網址與標題，可一併考慮。入口：釘選列右鍵選單加「Edit Pinned Page」子選單（仿 Arc），Command Palette 可加對應動作。**列的外觀（2026-10-30 補充）**：Arc 的釘選 Tab 一旦導航到釘選網址以外的頁面，該列顯示「釘選站台的 favicon + 斜線「/」+ 目前頁面標題」，一眼看得出已離開釘選頁；Larch 目前整列直接換成切過去網站的標題與 favicon（`tabChanged` 的 `PinStore.remember` 也會把節點的標題/favicon 覆蓋成新站的），看不出這是釘選。做法：節點的 favicon/標題要固定代表「釘選的那一頁」，不再被導航後的頁面覆蓋（只在 Replace Pinned URL 時才更新）；`TabRowView` 在 Tab 目前網址與節點網址不同（判斷「離開」的規則要定，如只比 host+path 或完整比對）時顯示「節點 favicon + / + 目前標題」。估點 **3**（含上面兩個操作合計 **5**）：要把節點 metadata 與即時 Tab metadata 分開，`remember` 的語意改變會牽動灰色已關閉列與重開後的顯示，需要 smoke 覆蓋；若含手動 Edit… 對話框再加 1。原估點 **2** 僅指兩個操作本身。
+2. Spaces（仿 Arc；尚未開工，以下是預訂的設計起點；**總估點 25**（七塊子項加總，子項各自仍遵守 1/2/3/5/8/13/21/40/? 量表，合計是例外），拆成以下七塊，個別領取）
    - 資料模型：Space = 名稱、顏色（取代固定的鼠尾草綠，由該色推導 hover / active / 進度條等配色，確保白字對比）、可選 emoji、自己的釘選區（含巢狀資料夾）與自己的一般 Tab。估點 **3**：主要是新 struct 與 `PinStore`/`TabManager` 從全域單一清單改成「依 Space 分」的資料結構，牽動面廣但單項不難。
    - 登入：所有 Space 先共用同一個 `WKWebsiteDataStore`；資料結構預留「Space 指定獨立 data store 識別碼」的欄位（只留欄位與註解，不實作）。估點 **1**：只加欄位與註解。
    - 切換：側邊欄底部一列 Space 切換列（圓點或 emoji，目前高亮，右側「+」）；Ctrl+1…9 切換（不佔用 ⌘1…⌘9）；側邊欄兩指橫滑（若穩定再做）；切換不重新載入頁面（各 Space 的 WKWebView 保留，只顯示/隱藏），過場動畫 ≤ 200ms。估點 **5**：新 UI 元件 + 多個 WKWebView 同時存活的顯示/隱藏管理，是前面沒有先例的模式。
@@ -9,7 +10,7 @@
    - Command Palette：新增 New / Rename / Switch to / Move Tab to Space 動作；一般模式的 Tab 與釘選搜尋跨所有 Space（結果標示所屬 Space），選到其他 Space 的項目先切過去。估點 **5**：`PaletteActions`/`PaletteModel`/`PaletteSearch` 都要擴充跨 Space 概念，且要先切 Space 再定位項目。
    - 還原：關閉 Tab 堆疊（⌘⇧T）維持全域，還原回原本的 Space；session restore 記住最後所在的 Space 與各 Space 的 Tab / 選中項；外部連結開在目前的 Space。估點 **3**：`SessionStore`/`TabManager.closedStack` 加 Space 關聯欄位與還原邏輯。
    - 遷移：既有 `pins.json` / `session.json` 無損遷移到預設 Space「Personal」（色 #699987），需壞檔容錯與 smoke 檢查。估點 **3**：一次性遷移程式 + 壞檔容錯 + smoke 覆蓋，模式仿既有 `Storage.swift` 的容錯讀寫。
-2. 從 Arc 匯入：把 Arc 的 Spaces、置頂 Tab 與資料夾（含巢狀）、名稱匯入 Larch；不匯入登入狀態（Brian 確認不需要）。待調查：Arc 本機資料位置與格式（推測在 `~/Library/Application Support/Arc/` 底下的 sidebar JSON，需實際確認）；先做唯讀解析並預覽再匯入，不修改 Arc 的資料；依賴 Spaces 的資料結構，在 Spaces 之後做。估點 **8**：格式未知需先花時間逆向 Arc 的 sidebar JSON（不確定性最大的部分），加上唯讀解析器、預覽 UI、對應到 Spaces 資料模型的匯入邏輯；依賴項目 1 完成。
+3. 從 Arc 匯入：把 Arc 的 Spaces、置頂 Tab 與資料夾（含巢狀）、名稱匯入 Larch；不匯入登入狀態（Brian 確認不需要）。待調查：Arc 本機資料位置與格式（推測在 `~/Library/Application Support/Arc/` 底下的 sidebar JSON，需實際確認）；先做唯讀解析並預覽再匯入，不修改 Arc 的資料；依賴 Spaces 的資料結構，在 Spaces 之後做。估點 **8**：格式未知需先花時間逆向 Arc 的 sidebar JSON（不確定性最大的部分），加上唯讀解析器、預覽 UI、對應到 Spaces 資料模型的匯入邏輯；依賴項目 2（Spaces）完成。
 
 ## 想法（低優先，沒有必做理由）
 - 書籤：Arc 本身也沒有傳統書籤，釘選 Tab 與巢狀資料夾已取代；之後有具體需求再提升。
@@ -22,12 +23,11 @@
   1. **視窗化 App 在前景時**（如點 Slack 連結開 Little，畫面停留在 Slack）：`LittleWindow` 改成 `NSPanel` + `.nonactivatingPanel`，用 `orderFrontRegardless()` 顯示、不呼叫 `NSApp.activate`，改記住呼叫當下的 frontmost app 並在顯示後 reactivate 回去。估點 **5**：現有 Little 整套 key window 攔截（Esc/⌘W/⌘O/⌘Return 等，見 CLAUDE.md 第 23 點）要在「key window 但 app 非 active」狀態下重新驗證，WKWebView 的點擊/輸入手感也要重新確認。
   2. **全螢幕 App 在前景時**（如全螢幕遊戲，畫面停留在遊戲，Little 浮在上面；仿 Arc/1Password autofill 蓋在全螢幕遊戲上的效果）：在 1 的基礎上疊加 `collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]` 讓視窗跨 Space 顯示。估點 **8**：依賴 1 先完成；跨 Space 疊加在不同 macOS 版本行為有落差（已知有渲染/點擊穿透的小毛病），需要額外在全螢幕情境下重新驗證整套互動。
 
-- 主題色可自選（2026-10-30）：目前側邊欄與視窗外框固定鼠尾草綠（`Theme.swift`），改成使用者可從幾組預設主題色中挑選，預設色參考 Arc 的主題色（實際色票需對照 Arc 截圖整理）。做法：`Theme` 的顏色改由「主色」推導 hover / active / 進度條 / 選取底色等，確保白字對比（可與 Spaces 資料模型的「顏色」共用同一套推導函式）；選色入口可放選單或 Command Palette 動作（如 Change Theme Color…），選擇存 `Preferences`（UserDefaults），切換時即時重繪。與項目 1 Spaces 的重疊：Spaces 做完後每個 Space 自帶顏色，這項就退化成「全域預設色 / Space 配色預設色票」，所以若 Spaces 近期要做，建議併入 Spaces 的「資料模型」子項而不單獨做。估點 **3**：主要是 `Theme` 顏色改成可變並由單一主色推導、預設色票與選色 UI，既有視圖要確認都吃 `Theme` 而非寫死色碼。
+- 主題色可自選（2026-10-30）：目前側邊欄與視窗外框固定鼠尾草綠（`Theme.swift`），改成使用者可從幾組預設主題色中挑選，預設色參考 Arc 的主題色（實際色票需對照 Arc 截圖整理）。做法：`Theme` 的顏色改由「主色」推導 hover / active / 進度條 / 選取底色等，確保白字對比（可與 Spaces 資料模型的「顏色」共用同一套推導函式）；選色入口可放選單或 Command Palette 動作（如 Change Theme Color…），選擇存 `Preferences`（UserDefaults），切換時即時重繪。與項目 2 Spaces 的重疊：Spaces 做完後每個 Space 自帶顏色，這項就退化成「全域預設色 / Space 配色預設色票」，所以若 Spaces 近期要做，建議併入 Spaces 的「資料模型」子項而不單獨做。估點 **3**：主要是 `Theme` 顏色改成可變並由單一主色推導、預設色票與選色 UI，既有視圖要確認都吃 `Theme` 而非寫死色碼。
 
 ## 已知缺口（未排序）
 - 邊用邊記的問題放這裡
-- 資料夾圖示/顏色。估點 **3**：`PinNode`/`PinStore` 加欄位，側邊欄列（`SidebarRows.swift`）與右鍵選單加對應 UI，模式仿 Space 顏色推導但範圍小很多。
-- 釘選的網址操作（2026-10-30，對照 Arc 右鍵「Edit Pinned Page」子選單）：Arc 的釘選網址不會隨瀏覽跳到別處而改變，要改必須明確右鍵操作。Larch 目前行為已一致（`PinStore.remember` 只同步標題與 favicon，不動節點網址），缺的是兩個明確操作：① **Replace Pinned URL with Current**：把節點網址更新為綁定 Tab 目前的網址；② **重設為原網址**（Arc 的 Back to Pinned URL）：把 Tab 導回節點網址，標題/favicon 也還原。另 Arc 還有「Edit…」可手動編輯網址與標題，可一併考慮。入口：釘選列右鍵選單加「Edit Pinned Page」子選單（仿 Arc），Command Palette 可加對應動作。**列的外觀（2026-10-30 補充）**：Arc 的釘選 Tab 一旦導航到釘選網址以外的頁面，該列顯示「釘選站台的 favicon + 斜線「/」+ 目前頁面標題」，一眼看得出已離開釘選頁；Larch 目前整列直接換成切過去網站的標題與 favicon（`tabChanged` 的 `PinStore.remember` 也會把節點的標題/favicon 覆蓋成新站的），看不出這是釘選。做法：節點的 favicon/標題要固定代表「釘選的那一頁」，不再被導航後的頁面覆蓋（只在 Replace Pinned URL 時才更新）；`TabRowView` 在 Tab 目前網址與節點網址不同（判斷「離開」的規則要定，如只比 host+path 或完整比對）時顯示「節點 favicon + / + 目前標題」。估點 **3**（含上面兩個操作合計 **5**）：要把節點 metadata 與即時 Tab metadata 分開，`remember` 的語意改變會牽動灰色已關閉列與重開後的顯示，需要 smoke 覆蓋；若含手動 Edit… 對話框再加 1。原估點 **2** 僅指兩個操作本身。
+- 資料夾圖示/顏色（2026-10-30 定案範圍，Brian 對 Arc 細節沒有強烈想法，以最小可用為原則，日後看 Arc 實際畫面再調）：① **顏色**只有一個主色，從一組預設色票挑選（可與主題色的色票共用），只用來給資料夾圖示上色，不改列背景、不改文字色；沒設定就維持現在的預設外觀。② **圖示**以 emoji 為主（系統 emoji 選擇器或一小組常用 emoji），不做 SF Symbol 挑選器；有 emoji 時顏色不生效（emoji 本身帶色），所以顏色只作用在預設資料夾圖示。③ 資料：`PinNode`（folder）加可選的 `icon`（emoji 字串）與 `color`（色票識別字串）兩個欄位，存 `pins.json`，舊檔缺欄位用預設，載入時對壞值容錯。④ 入口：資料夾右鍵選單加「Change Icon…」「Change Color…」；Command Palette 動作暫不做。⑤ 展開/收合時圖示維持不變（不做展開版圖示）。不做的：自訂色碼挑選器、SF Symbol 挑選器、列背景染色。估點 **3**：`PinNode`/`PinStore` 加欄位與容錯載入，側邊欄資料夾列（`SidebarRows.swift`）依欄位繪製，右鍵選單加兩項與一個簡單的選色/選 emoji 面板，需補 smoke。
 - 拖曳到資料夾上懸停自動展開。估點 **3**：`SidebarView` 拖曳目的地已有幾何判定（第 22 點），加「停留 N 毫秒後展開資料夾」的計時器與狀態，要避免跟既有插入線提示互相干擾。
 - 多選（Tab / 釘選的側邊欄多選批次操作，如多選後批次關閉/刪除/移動）。估點 **5**：History 視窗已有多選模式可參考（核取方塊 + 選取工具列），但側邊欄要再處理拖曳與多選共存、以及 Tab 與釘選混合選取時動作的可用性判斷。
 - 下載：可取消、下載清單；目前只顯示最新一筆。估點 **5**：`DownloadManager.swift` 目前應該只追蹤單筆狀態，要改成清單（含歷史）、新增取消（`WKDownload.cancel`）、加一個顯示清單的 UI（可能類似 History 視窗的簡化版）。
