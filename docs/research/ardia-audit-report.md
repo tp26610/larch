@@ -143,7 +143,7 @@
 - 引擎建置：從 `chromium.googlesource.com` 拉指定 tag（`engine/patches/build/01-sync.sh:13,19`），套 ungoogled-chromium 指定 tag 與 domain substitution，在維護者自己的機器（`~/chromium-build`，README 說首次 build 約 2 小時）編譯。
 - 預建引擎 archive 由 GitHub release 提供，build 時用 `prebuilt-engines.tsv` 內的 SHA-256 驗證（`packages/ardiacore/scripts/fetch-engine.sh:63-65`）。注意這個 TSV 在同一個 repo、同一個維護者控制，雜湊只能防傳輸損壞，不能防維護者端被入侵。
 - **沒有 CI**（repo 無 `.github/workflows`）。**沒有可重現建置**：我沒看到任何機制讓第三方能從原始碼重建出相同二進位。發佈流程由本機的 `scripts/release.sh` 與 AI 代理執行（`docs/releasing.md:175-179` 寫明「owner 已授權代理做完整發佈與部署」）。
-- 簽章與公證：Developer ID（`mantra patel (U5L5T3NGVV)`，`docs/releasing.md:86`）、Hardened Runtime、notarize + staple（`docs/releasing.md:135-146`）。這證明二進位通過 Apple 的自動掃描，**不代表**它與原始碼一致。
+- 簽章與公證：Developer ID（維護者個人名義，`docs/releasing.md:86`）、Hardened Runtime、notarize + staple（`docs/releasing.md:135-146`）。這證明二進位通過 Apple 的自動掃描，**不代表**它與原始碼一致。
 - 授權義務：每個二進位旁都附原始碼（`docs/releasing.md:68-82`）。
 
 ## 6. 專案健康度

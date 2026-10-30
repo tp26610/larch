@@ -13,6 +13,7 @@
 ## 2. 決策與理由
 
 ### D1. 先用 Electron 做原型（`../my-browser`，已完成）
+（`../my-browser` 為私有專案，外部讀者無法存取，以下引用僅供作者內部參考。）
 三個核心功能都做完並有 smoke 測試，但**沒有成為主力**，原因見 D2。踩過的坑記在 `../my-browser/CLAUDE.md`（例如 Ctrl+Tab 不可在主程序 preventDefault，否則收不到 Ctrl 放開事件）。
 
 ### D2. Electron 放棄：Google 登入被擋

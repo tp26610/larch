@@ -48,3 +48,5 @@ xattr -dr com.apple.quarantine "/Applications/Larch.app"
 - 歷史紀錄寫入本機（暫無 UI）
 
 決策與研究脈絡見 [docs/decisions.md](docs/decisions.md)（含 `docs/research/` 的 Ardia 報告）。後續見 [BACKLOG.md](BACKLOG.md)，開發脈絡見 [CLAUDE.md](CLAUDE.md)。
+
+授權：[MIT](LICENSE)。

@@ -31,12 +31,6 @@
 - 下載：可取消、下載清單；目前只顯示最新一筆。估點 **5**：`DownloadManager.swift` 目前應該只追蹤單筆狀態，要改成清單（含歷史）、新增取消（`WKDownload.cancel`）、加一個顯示清單的 UI（可能類似 History 視窗的簡化版）。
 - 說明頁上的上一頁/下一頁行為未驗證。估點 **1**：這是驗證 / 補 smoke check 的工作，不是新功能；真的發現壞掉才會另外估修復的點數。
 - 正式簽章與公證（Developer ID）；目前 ad-hoc。估點 **3**：主要是流程（申請 Developer ID、entitlements、`scripts/bundle.sh` 加簽章與 notarize 步驟），程式碼改動不多，但依賴 Apple Developer 帳號與 notarization 審核時間，等待時間不算入點數。
-- Repo 轉 public 前準備（2026-10-30 審查，先不處理，記著備用）：
-   - 加 LICENSE：目前完全沒有授權聲明，公開前需先決定授權方式（MIT / Apache-2.0 / 其他）。估點 **1**。
-   - `docs/research/ardia-team-report.md` 含對 Ardia 維護者本人的背景調查（真名、個人網站暱稱、X 帳號、對其他副業專案的推測），公開前需要移除或簡化成不含個人背景調查細節的摘要；`ardia-audit-report.md`（程式碼/供應鏈安全審查）風險較低可視情況保留。若要從 git 歷史徹底清除，需用 `git filter-repo` 或 BFG 改寫整個歷史，不是單純刪除新 commit。估點 **2**。
-   - CLAUDE.md / `docs/decisions.md` 多處引用私有姊妹專案 `../my-browser`；公開後外部讀者連不到，建議加註「私有專案，僅供內部參考」。估點 **1**。
-   - 已確認沒問題、不用處理：追蹤檔案與完整 git 歷史都沒有 session.json/history.json/pins.json、API key、密碼等機密內容；commit 作者 email 是自己的 GitHub 帳號，本來就會公開；App 圖示是程式產生的原創圖形；`Package.swift` 沒有私有套件來源。
-
 ## 已完成
 - 單一視窗、側邊欄（⌘S）、圓角卡片與邊框拖曳
 - Tab 新增/關閉/切換/還原（25 筆）/雙擊改名/載入光條/favicon
@@ -58,3 +52,4 @@
 - Split View：拖一個一般 Tab 到另一個一般 Tab 中間並排顯示（固定 50/50，右上角退出按鈕，Command Palette 動作 Exit Split View）；側邊欄把配對的兩個 Tab 顯示成同一列、左右並排兩顆膠囊（不是疊成兩列）；關閉、釘選或拖去重排其中一半都會自動解除配對。已知限制：不可拖曳調整比例、視窗重開不記得配對、側邊欄拖曳排序的插入線沒考慮半寬。
 - ⌘+點連結：比照 Option+點連結的攔截方式，在 `Tab.decidePolicyFor` 新增 `onCommandClick`，於 `TabManager.attach` 接到 `newTab(activate: false, after: 來源 Tab)`，插在來源之後、背景開新 Tab 不切換焦點；⌥⌘+點、非 http(s)、非點連結事件不受影響。
 - Task Manager（獨立視窗，`TaskManagerWindow.swift`，仿 Arc）：列出主視窗的一般 Tab（v1 不含 Little），依記憶體從高到低排序（`_webProcessIdentifier` 取 PID、`proc_pidinfo` 查 RSS，都是私有/系統介面，拿不到時該列顯示「—」），視窗開著時每 1 秒刷新；每列「End Process」＝關閉分頁（不是真的 kill -9），點列本身切換到該分頁；選單加在 Window、Command Palette 動作 Show Task Manager；`closeCurrentTab()` 補上這個視窗的 key window 判斷（⌘W 關視窗本身不動 Tab）。
+- Repo 轉 public 前準備（2026-10-30）：加 MIT LICENSE；`ardia-team-report.md` 精簡成不含維護者個人背景的摘要；CLAUDE.md / `docs/decisions.md` 標註 `../my-browser` 為私有專案。注意：舊版報告仍留在 git 歷史，若要徹底清除需 `git filter-repo` 改寫歷史（本次選擇不做）。
