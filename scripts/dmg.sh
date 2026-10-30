@@ -1,9 +1,9 @@
 #!/bin/bash
-# 把 build/Larch.app 包成 dmg（含 /Applications 捷徑）。用法：scripts/dmg.sh [版本號，預設讀根目錄 VERSION]
+# 把 build/Larch.app 包成 dmg（含 /Applications 捷徑）。版本號讀根目錄 VERSION。用法：scripts/dmg.sh
 set -euo pipefail
 cd "$(dirname "$0")/.."
-VERSION="${1:-$(tr -d "[:space:]" < VERSION)}"
-scripts/bundle.sh "$VERSION"
+VERSION="$(tr -d "[:space:]" < VERSION)"
+scripts/bundle.sh
 STAGE="$(mktemp -d)"
 trap 'rm -rf "$STAGE"' EXIT
 cp -R build/Larch.app "$STAGE/"

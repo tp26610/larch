@@ -1,9 +1,9 @@
 #!/bin/bash
-# 把 release 版包成 build/Larch.app（ad-hoc 簽章）。用法：scripts/bundle.sh [版本號，預設讀根目錄 VERSION]
+# 把 release 版包成 build/Larch.app（ad-hoc 簽章）。版本號讀根目錄 VERSION。用法：scripts/bundle.sh
 set -euo pipefail
 cd "$(dirname "$0")/.."
 swift build -c release
-VERSION="${1:-$(tr -d "[:space:]" < VERSION)}"
+VERSION="$(tr -d "[:space:]" < VERSION)"
 BUILD="$(git rev-list --count HEAD 2>/dev/null || echo 1)"
 APP="build/Larch.app"
 rm -rf "$APP"
