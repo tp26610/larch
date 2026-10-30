@@ -790,6 +790,8 @@ extension Smoke {
         let p = c.root.palette
         check("Fuzzy：子序列與邊界", Fuzzy.score(term: "gh", in: "GitHub") > 0 && Fuzzy.score(term: "zq", in: "GitHub") < 0
               && Fuzzy.score(query: "git zzz", in: "GitHub Home") < 0 && Fuzzy.score(term: "git", in: "git") > Fuzzy.score(term: "git", in: "my git"))
+        check("Fuzzy：子序列備援忽略過長文字，避免長網址湊巧誤判", Fuzzy.score(term: "gmail", in: "Gmail") > 0
+              && Fuzzy.score(term: "gmail", in: "docs.google.com/spreadsheets/d/1ygxl5s5sgp9uwc7ifr05-qevw_kr83h5nv_lwo") == -1)
 
         // 準備資料：兩個已開啟的 Tab 與歷史（含一筆未開啟的）。
         while tm.tabs.count > 1 { tm.close(tm.tabs.last!) }
@@ -813,9 +815,15 @@ extension Smoke {
         p.refresh()
         check("第一列是「Open: 輸入內容」", p.items.first?.kind == .openOrSearch && p.items.first?.title == "Open: example.com/x"
               && { if case .open(let u)? = p.items.first?.action { return u.absoluteString == "https://example.com/x" } else { return false } }())
+        check("已經是網址時不重複多一列猜測", p.items.filter { $0.kind == .openOrSearch }.count == 1)
+        p.field.stringValue = "hello world"
+        p.refresh()
+        check("多字詞查詢不猜測網域", p.items.first?.title == "Search: hello world")
         p.field.stringValue = "page"
         p.refresh()
-        check("關鍵字第一列是 Search", p.items.first?.title == "Search: page")
+        check("單字詞第一列是猜測網域、第二列才是 Search", p.items.first?.title == "Open: page.com"
+              && { if case .open(let u)? = p.items.first?.action { return u.absoluteString == "https://page.com" } else { return false } }()
+              && p.items.dropFirst().first?.title == "Search: page")
 
         // (b) 比對已開啟 Tab（標題 / 網址）
         let tabItems = p.items.filter { $0.kind == .tab }
