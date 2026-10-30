@@ -18,6 +18,10 @@
   2. **預設選取邏輯**：Arc 在有強匹配的既有項目（如標題完全等於輸入）時，預設高亮選的是那筆資料而不是「Search with Google」；Larch 目前 `results()` 永遠把 `openOrSearch` 放第一筆，`CommandPaletteView` 預設選取第一列。要討論怎麼定義「夠強的匹配」（如標題完全相等、或 `Fuzzy.score` 超過某門檻）才改變預設選取，避免打幾個字就跳走、選錯。
   3. **空白輸入時的豐富建議列表**：Arc 空白時混合顯示釘選/最近常用（含內容摘要文字、Switch to Tab／Archived 等標籤），Larch 目前空白時只列「目前開啟中的 Tab」（`results()` 的 `!q.isEmpty` 才查歷史）。要做的話是空白時也納入釘選與最近歷史（依最近造訪/次數排序），但「內容摘要」這塊 Arc 應該是另外存了頁面文字索引，Larch 目前沒有、工程量較大，可以先不做，只做清單來源擴充。
 
+- Little Window 不搶走前景 App 焦點（2026-10-30 討論，仿 Arc）：
+  1. **視窗化 App 在前景時**（如點 Slack 連結開 Little，畫面停留在 Slack）：`LittleWindow` 改成 `NSPanel` + `.nonactivatingPanel`，用 `orderFrontRegardless()` 顯示、不呼叫 `NSApp.activate`，改記住呼叫當下的 frontmost app 並在顯示後 reactivate 回去。估點 **5**：現有 Little 整套 key window 攔截（Esc/⌘W/⌘O/⌘Return 等，見 CLAUDE.md 第 23 點）要在「key window 但 app 非 active」狀態下重新驗證，WKWebView 的點擊/輸入手感也要重新確認。
+  2. **全螢幕 App 在前景時**（如全螢幕遊戲，畫面停留在遊戲，Little 浮在上面；仿 Arc/1Password autofill 蓋在全螢幕遊戲上的效果）：在 1 的基礎上疊加 `collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]` 讓視窗跨 Space 顯示。估點 **8**：依賴 1 先完成；跨 Space 疊加在不同 macOS 版本行為有落差（已知有渲染/點擊穿透的小毛病），需要額外在全螢幕情境下重新驗證整套互動。
+
 ## 已知缺口（未排序）
 - 邊用邊記的問題放這裡
 - 資料夾圖示/顏色、釘選「重設為原網址」、拖曳到資料夾上懸停自動展開、多選
