@@ -238,7 +238,11 @@ enum Smoke {
         check("清理後剩一個 Tab", tm.tabs.count == 1)
         let last = tm.tabs[0]
         tm.close(last)
-        check("關掉最後一個會補一個空白分頁", tm.tabs.count == 1 && tm.activeTab?.url == nil)
+        check("關掉最後一個 Tab 後保持空畫面（仿 Arc）", tm.tabs.isEmpty && tm.activeTab == nil && c.root.card.subviews.allSatisfy { $0 is LoadingBarView })
+        c.submitAddress(server.url("/a").absoluteString)
+        check("空畫面時從網址列輸入會開新 Tab 載入", tm.tabs.count == 1 && tm.activeTab != nil)
+        tm.close(tm.tabs[0])
+        tm.newTab() // 後面的檢查假設永遠有一個 Tab
 
         print("改名")
         let t = tm.activeTab!
@@ -779,7 +783,8 @@ extension Smoke {
         // 最後一個 Tab：維持現有行為，補一個空白 Tab。
         while tm.tabs.count > 1 { tm.close(tm.tabs.last!) }
         send("w", .control, in: w)
-        check("Ctrl+W 關掉最後一個 Tab 會補空白 Tab", tm.tabs.count == 1 && tm.activeTab?.url == nil)
+        check("Ctrl+W 關掉最後一個 Tab 後保持空畫面", tm.tabs.isEmpty && tm.activeTab == nil)
+        tm.newTab()
     }
 
     static func paletteChecks(_ server: FixtureServer, _ app: AppDelegate) async throws {

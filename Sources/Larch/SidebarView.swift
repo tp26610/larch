@@ -402,6 +402,15 @@ final class CardView: NSView {
         relayout()
     }
 
+    /// 沒有任何 Tab 時：卡片保持空白（仿 Arc）。
+    func showEmpty() {
+        subviews.forEach { $0.removeFromSuperview() }
+        mode = nil
+        onUnsplit = nil
+        addSubview(loadingBar)
+        relayout()
+    }
+
     /// 兩個 Tab 並排顯示（固定 50/50，中間窄分隔線），右上角按鈕退出分割。
     func showSplit(_ left: NSView, _ right: NSView, onUnsplit: @escaping () -> Void) {
         subviews.forEach { $0.removeFromSuperview() }

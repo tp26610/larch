@@ -67,7 +67,7 @@ Smoke.swift                      FixtureServer（本機假網站）+ smoke 檢�
    **UA 補字尾（不是偽裝 Chrome）**：`WKWebView` 預設 UA 少了 `Version/X Safari/Y` 字尾，導致它不被辨識為「正式」瀏覽器——Google 搜尋結果頁因此退回簡化版（無 favicon、無 AI 模式/購物等分頁、無帳號頭像），真正的 Safari 不會這樣。`Tab.init`（`Tab.swift`）用 `configuration.applicationNameForUserAgent` 補上這個字尾：Safari 版本號動態讀系統的 `/Applications/Safari.app`（跟著 macOS 更新），WebKit 組建號固定用 `605.1.15`（Safari 多年未變、真 Safari 也是這個值）。這跟已驗證無效、刻意不做的「偽裝 Chrome UA / `Sec-CH-UA`」（見 `docs/decisions.md`）是兩回事：那是假裝成別的瀏覽器引擎，這裡只是把 WKWebView 本來就該有、但預設沒帶的 Safari 身分字串補回去。用 `.build/debug/Larch --live-check https://httpbin.org/user-agent /tmp/x` 可以驗證目前送出的完整 UA 字串。
 3. **權限預設全拒**：媒體擷取一律 deny；僅啟用 element fullscreen。非 http/https/about/blob 的導覽（file:、mailto:、自訂 scheme）一律取消。
 4. **網頁來源的標題與網址一律 `stringValue` 純文字顯示**，不用 attributed/HTML。
-5. 關閉最後一個 Tab 會補一個空白 Tab；空白（無 http URL）的 Tab 不進 closedStack。
+5. 關閉最後一個 Tab 後保持空畫面（仿 Arc：`activeTab == nil`，`CardView.showEmpty()`），不再補空白 Tab（否則空白 Tab 的 X 看起來關不掉）；啟動時仍會有一個空白 Tab。空畫面時從網址列輸入會開新 Tab。空白（無 http URL）的 Tab 不進 closedStack。
 6. 預設瀏覽器註冊、外部連結走 Little，需要打包後的 .app 且 Info.plist 宣告 http/https（尚未做，見 BACKLOG）。
 7. smoke 用 `NSApp.mainMenu.performKeyEquivalent` 走真實選單比對，等同按鍵路徑。
 8. 沒有螢幕錄製權限時 `screencapture` 會失敗；改用 `--live-check` 存 PNG。
@@ -79,7 +79,7 @@ Smoke.swift                      FixtureServer（本機假網站）+ smoke 檢�
 13. 外部連結入口是 `application(_:open:)`；冷啟動時 controller 可能還沒建好，先放進 `pendingURLs`。本機 .html 只放行該檔案的導覽（`allowedFileURL`）；網址列與其他來源的 file: 一律拒絕。
 14. 下載、歷史、session 路徑在 smoke 模式都導到暫存資料夾，不碰真實資料。
 15. 說明頁（loadHTMLString）在上一頁/下一頁的歷史行為未驗證；重新整理在說明頁上會重試原網址（`reloadOrRetry`）。
-16. **⌘W / Ctrl+W 由 `LarchWindow.performKeyEquivalent` 先交給選單**：焦點在 WKWebView 時，按鍵會先送進網頁、沒被 preventDefault 才非同步回頭比對選單，網頁可擋掉、smoke 也會變成非同步。Ctrl+W 是 File 選單裡獨立的「Close Tab (Ctrl+W)」項目。關閉最後一個 Tab 會補一個空白 Tab（視窗不關）。
+16. **⌘W / Ctrl+W 由 `LarchWindow.performKeyEquivalent` 先交給選單**：焦點在 WKWebView 時，按鍵會先送進網頁、沒被 preventDefault 才非同步回頭比對選單，網頁可擋掉、smoke 也會變成非同步。Ctrl+W 是 File 選單裡獨立的「Close Tab (Ctrl+W)」項目。關閉最後一個 Tab 後保持空畫面（視窗不關）。
 
 17. **⌘T 是命令列覆蓋層，不是直接新增空白 Tab**：`RootView.palette`（`CommandPaletteView`）蓋在整個視窗內容上，開啟時 `hitTest` 吞掉所有滑鼠事件，面板置中於網頁卡片。第一列固定「Open / Search: 輸入」→ 新 Tab；其次是已開啟的 Tab（切換、不開新 Tab）、歷史（新 Tab，已開啟的網址不重複）。標題與網址一律 `stringValue` 純文字。Esc 或點面板外關閉並把焦點還給原處；選取後焦點交給網頁。⌘L 也叫出同一個覆蓋層但走「目前 Tab 導航」模式（`showAddressPalette`、`paletteNavigatesCurrentTab`：預填目前網址並全選，開啟/搜尋與歷史在目前 Tab 載入，不開新 Tab；已開 Tab 與釘選仍是切換）；側邊欄網址列保留，可直接點擊輸入。**動作模式**：覆蓋層 `mode`（`PaletteMode.normal/.actions`）；`insertTab:` 進入、`insertBacktab:` 或空輸入的 `deleteBackward:` 離開（`CommandPaletteView.control`），chip 與提示文字隨模式變化，`PaletteSearch.actionResults` 只列 `isAvailable` 的動作（標題與關鍵字模糊比對，空查詢依表順序）。**新增動作 = 在 `PaletteActions.all` 加一項**（run 呼叫 controller 既有方法，不複製邏輯），快捷鍵提示是顯示用字串，要和選單一致。一般模式不列動作；Tab 排序 = 模糊分數 + 最近使用加成（`Tab.lastActiveAt`）。列最多顯示 8 列（`maxVisibleRows`），其餘用滾輪/↑↓ 捲動（選取列以「列高 × 索引」計算位置並在每次 layout 後捲進可視範圍，換一批結果會回到最上面；舊版用尚未版面的 row.frame 導致選取列跑出畫面）（刻意不顯示捲軸，避免「永遠顯示捲軸」讓內容變窄）。Open Web Inspector 用 WebKit 私有的 `_inspector.show`（`responds(to:)` 檢查，取不到就不列），`isInspectable = true`。Electron 版的 Cmd/Ctrl+Enter 是 Little Arc 的行為，不適用於 Palette。`PaletteMode` 預留 `.switcher`（Ctrl+Tab MRU 切換器之後重用）。外觀：`docs/palette-normal.png`、`docs/palette-actions.png`（smoke 在 `LARCH_SHOT_DIR` 時產生）。日後擴充其他來源：在 `PaletteItem.Action` 加 case、在 `PaletteSearch.results` 加來源。截圖/除錯：`Larch --open-palette 關鍵字` 啟動後直接叫出覆蓋層（直接執行會讀寫真實 session/history）；外觀截圖見 `docs/palette.png`。
 
@@ -105,7 +105,7 @@ Smoke.swift                      FixtureServer（本機假網站）+ smoke 檢�
 28. **Task Manager**（`TaskManagerWindow.swift`，仿 Arc）：架構仿 History 視窗（一般標題列 NSWindow，不是覆蓋層），但資料即時變化，不是一次性讀取——`TaskManagerWindowController.show()` 立刻 `reload()` 一次並啟動 1 秒 `Timer`，`windowWillClose`（`NSWindowDelegate`）停止並清空 timer，避免視窗關閉後背景還在空轉。**v1 範圍只列主視窗的一般 Tab**（`tabs.tabs`），不含 Little 視窗的 Tab（Little 的 Tab 不在這個清單裡，架構上要另外接線，之後有需要再補）。**取得 process 資訊靠兩個私有介面**：`WKWebView` 的 `_webProcessIdentifier`（私有 KVC，`responds(to:)` 防呆，取不到該列記憶體顯示「—」，不影響其他列）取得 WebContent process 的 PID；`proc_pidinfo(PROC_PIDTASKINFO)`（系統 libproc）查常駐記憶體（RSS）。這跟 UA 補字尾（第 2 點）、Open Web Inspector 用 `_inspector`（第 17 點）是同一類「用私有介面補齊功能，版本變動就重新驗證」的風險，不是新的做法。**一分頁一個 process 的假設**：2026-10-29 PoC 驗證過，就算兩個分頁開同一個網域也拿到不同 PID，所以 UI 不用處理「多分頁共用一個 process」的合併顯示（跟 Chrome/Arc 可能共用 renderer process 的行為不同，WKWebView 預設設定下看起來是分開的，但這只驗證過少量分頁、同一次執行，不保證所有情境都這樣）。依記憶體從高到低排序，`reload()` 整批重建列（跟 History 一樣，Tab 數量不多，效能沒問題）。**「End Process」按鈕＝關閉分頁**（呼叫既有的 `tabs.close(tab)`），**不是真的 kill -9**：WebContent process 被 kill 後 WKWebView 的後續行為沒驗證過（可能顯示當機頁、可能需要手動 reload），關閉分頁一樣能釋放資源、行為可預期，風險低。點列本身切換到該分頁。選單加在「Window」（`AppDelegate.buildMenu`，無預設快捷鍵）；Command Palette 動作表加 `taskManager`。**`closeCurrentTab()` 補上 key window 判斷**（跟第 26 點 History/Little 一樣的教訓）：Task Manager 視窗為 key window 時 ⌘W 關視窗本身，不動主視窗 Tab。
 
 ## 驗證狀況
-- smoke 451/451 通過（macOS 26 / Swift 6.2.4）；accounts.google.com 登入頁載入成功（含 favicon）。
+- smoke 455/455 通過（macOS 26 / Swift 6.2.4）；accounts.google.com 登入頁載入成功（含 favicon）。
 - 冷啟動與已執行時 `open -a` 開外部連結已用打包的 .app 實測（session.json 有新 Tab）。
 - Google 實際帳密登入與重開後保持登入：已實測，正常。
 - Split View：卡片左右分割、側邊欄配對列並排顯示，已在真實視窗用滑鼠拖曳實測。

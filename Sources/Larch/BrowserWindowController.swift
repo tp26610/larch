@@ -400,8 +400,18 @@ final class BrowserWindowController: NSObject, NSTextFieldDelegate, NSWindowDele
             syncToolbar(tab)
             syncLoading(tab, animated: false)
             window.title = tab.displayTitle
+        } else {
+            root.card.showEmpty()
+            sidebar.backButton.isEnabled = false
+            sidebar.forwardButton.isEnabled = false
+            if addressField.currentEditor() == nil { addressField.stringValue = "" }
+            root.card.loadingBar.update(loading: false, progress: 0, animated: false)
+            sidebar.setLoading(false)
+            window.title = "Larch"
         }
-        if tabs.activeTab?.url == nil { focusAddress() } else if window.firstResponder === addressField.currentEditor() {
+        if tabs.activeTab == nil {
+            // 空畫面：不搶焦點
+        } else if tabs.activeTab?.url == nil { focusAddress() } else if window.firstResponder === addressField.currentEditor() {
             window.makeFirstResponder(tabs.activeTab?.webView)
         }
     }

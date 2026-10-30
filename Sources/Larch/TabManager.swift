@@ -134,11 +134,7 @@ final class TabManager {
         }
         if let active = activeTab { stamp(active) } // 關閉後切到的 Tab 算最近使用
         onStructureChange?()
-        if tabs.isEmpty {
-            newTab()
-        } else {
-            onActiveChange?()
-        }
+        onActiveChange?() // 關掉最後一個 Tab 時 activeTab 為 nil，卡片保持空白（仿 Arc）
     }
 
     @discardableResult
