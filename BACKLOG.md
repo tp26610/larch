@@ -1,22 +1,22 @@
 # Backlog
 
 ## 接下來（依序）
-1. Spaces（仿 Arc；尚未開工，以下是預訂的設計起點）
-   - 資料模型：Space = 名稱、顏色（取代固定的鼠尾草綠，由該色推導 hover / active / 進度條等配色，確保白字對比）、可選 emoji、自己的釘選區（含巢狀資料夾）與自己的一般 Tab。
-   - 登入：所有 Space 先共用同一個 `WKWebsiteDataStore`；資料結構預留「Space 指定獨立 data store 識別碼」的欄位（只留欄位與註解，不實作）。
-   - 切換：側邊欄底部一列 Space 切換列（圓點或 emoji，目前高亮，右側「+」）；Ctrl+1…9 切換（不佔用 ⌘1…⌘9）；側邊欄兩指橫滑（若穩定再做）；切換不重新載入頁面（各 Space 的 WKWebView 保留，只顯示/隱藏），過場動畫 ≤ 200ms。
-   - 管理：右鍵重新命名、改色、改圖示、刪除（確認；其中的 Tab 一併關閉、釘選資料刪除；最後一個 Space 不能刪）；Tab / 釘選右鍵「移到 Space」或拖到切換列。
-   - Command Palette：新增 New / Rename / Switch to / Move Tab to Space 動作；一般模式的 Tab 與釘選搜尋跨所有 Space（結果標示所屬 Space），選到其他 Space 的項目先切過去。
-   - 還原：關閉 Tab 堆疊（⌘⇧T）維持全域，還原回原本的 Space；session restore 記住最後所在的 Space 與各 Space 的 Tab / 選中項；外部連結開在目前的 Space。
-   - 遷移：既有 `pins.json` / `session.json` 無損遷移到預設 Space「Personal」（色 #699987），需壞檔容錯與 smoke 檢查。
-2. 從 Arc 匯入：把 Arc 的 Spaces、置頂 Tab 與資料夾（含巢狀）、名稱匯入 Larch；不匯入登入狀態（Brian 確認不需要）。待調查：Arc 本機資料位置與格式（推測在 `~/Library/Application Support/Arc/` 底下的 sidebar JSON，需實際確認）；先做唯讀解析並預覽再匯入，不修改 Arc 的資料；依賴 Spaces 的資料結構，在 Spaces 之後做。
+1. Spaces（仿 Arc；尚未開工，以下是預訂的設計起點；**總估點 25**（七塊子項加總，子項各自仍遵守 1/2/3/5/8/13/21/40/? 量表，合計是例外），拆成以下七塊，個別領取）
+   - 資料模型：Space = 名稱、顏色（取代固定的鼠尾草綠，由該色推導 hover / active / 進度條等配色，確保白字對比）、可選 emoji、自己的釘選區（含巢狀資料夾）與自己的一般 Tab。估點 **3**：主要是新 struct 與 `PinStore`/`TabManager` 從全域單一清單改成「依 Space 分」的資料結構，牽動面廣但單項不難。
+   - 登入：所有 Space 先共用同一個 `WKWebsiteDataStore`；資料結構預留「Space 指定獨立 data store 識別碼」的欄位（只留欄位與註解，不實作）。估點 **1**：只加欄位與註解。
+   - 切換：側邊欄底部一列 Space 切換列（圓點或 emoji，目前高亮，右側「+」）；Ctrl+1…9 切換（不佔用 ⌘1…⌘9）；側邊欄兩指橫滑（若穩定再做）；切換不重新載入頁面（各 Space 的 WKWebView 保留，只顯示/隱藏），過場動畫 ≤ 200ms。估點 **5**：新 UI 元件 + 多個 WKWebView 同時存活的顯示/隱藏管理，是前面沒有先例的模式。
+   - 管理：右鍵重新命名、改色、改圖示、刪除（確認；其中的 Tab 一併關閉、釘選資料刪除；最後一個 Space 不能刪）；Tab / 釘選右鍵「移到 Space」或拖到切換列。估點 **5**：刪除與搬移涉及跨 Space 的資料搬動與既有拖曳（`SidebarRows.swift`）、右鍵選單邏輯擴充。
+   - Command Palette：新增 New / Rename / Switch to / Move Tab to Space 動作；一般模式的 Tab 與釘選搜尋跨所有 Space（結果標示所屬 Space），選到其他 Space 的項目先切過去。估點 **5**：`PaletteActions`/`PaletteModel`/`PaletteSearch` 都要擴充跨 Space 概念，且要先切 Space 再定位項目。
+   - 還原：關閉 Tab 堆疊（⌘⇧T）維持全域，還原回原本的 Space；session restore 記住最後所在的 Space 與各 Space 的 Tab / 選中項；外部連結開在目前的 Space。估點 **3**：`SessionStore`/`TabManager.closedStack` 加 Space 關聯欄位與還原邏輯。
+   - 遷移：既有 `pins.json` / `session.json` 無損遷移到預設 Space「Personal」（色 #699987），需壞檔容錯與 smoke 檢查。估點 **3**：一次性遷移程式 + 壞檔容錯 + smoke 覆蓋，模式仿既有 `Storage.swift` 的容錯讀寫。
+2. 從 Arc 匯入：把 Arc 的 Spaces、置頂 Tab 與資料夾（含巢狀）、名稱匯入 Larch；不匯入登入狀態（Brian 確認不需要）。待調查：Arc 本機資料位置與格式（推測在 `~/Library/Application Support/Arc/` 底下的 sidebar JSON，需實際確認）；先做唯讀解析並預覽再匯入，不修改 Arc 的資料；依賴 Spaces 的資料結構，在 Spaces 之後做。估點 **8**：格式未知需先花時間逆向 Arc 的 sidebar JSON（不確定性最大的部分），加上唯讀解析器、預覽 UI、對應到 Spaces 資料模型的匯入邏輯；依賴項目 1 完成。
 
 ## 想法（低優先，沒有必做理由）
 - 書籤：Arc 本身也沒有傳統書籤，釘選 Tab 與巢狀資料夾已取代；之後有具體需求再提升。
 - Cmd+T 命令列優化（對照 Arc 截圖整理，2026-10-29；依標題比對 Tab/Pin/History 已經在 `PaletteSearch.results`／`Fuzzy.score` 實作且經 Brian 實測確認 OK，以下是另外三個還沒做的方向，之後要做再從這裡挑）：
-  1. **Google 打字建議（ghost 候選）**：Arc 在搜尋列最上面會即時列出幾筆 Google 建議（如輸入「固定支出」會跑出「固定支出保障倍數」「固定支出表格」「固定支出 とは」），這是呼叫搜尋引擎的 suggest API（如 `https://www.google.com/complete/search?client=firefox&q=...`），Larch 目前只有一行固定的「Search: 輸入文字」。做法：`PaletteSearch` 或 `CommandPaletteView` 加非同步請求（debounce，避免每個按鍵都打網路），回來後插在 `openOrSearch` 之後、Tab/History 之前；要處理請求順序錯亂（晚送出的查詢先回來）與離線/失敗時不顯示。
-  2. **預設選取邏輯**：Arc 在有強匹配的既有項目（如標題完全等於輸入）時，預設高亮選的是那筆資料而不是「Search with Google」；Larch 目前 `results()` 永遠把 `openOrSearch` 放第一筆，`CommandPaletteView` 預設選取第一列。要討論怎麼定義「夠強的匹配」（如標題完全相等、或 `Fuzzy.score` 超過某門檻）才改變預設選取，避免打幾個字就跳走、選錯。
-  3. **空白輸入時的豐富建議列表**：Arc 空白時混合顯示釘選/最近常用（含內容摘要文字、Switch to Tab／Archived 等標籤），Larch 目前空白時只列「目前開啟中的 Tab」（`results()` 的 `!q.isEmpty` 才查歷史）。要做的話是空白時也納入釘選與最近歷史（依最近造訪/次數排序），但「內容摘要」這塊 Arc 應該是另外存了頁面文字索引，Larch 目前沒有、工程量較大，可以先不做，只做清單來源擴充。
+  1. **Google 打字建議（ghost 候選）**：Arc 在搜尋列最上面會即時列出幾筆 Google 建議（如輸入「固定支出」會跑出「固定支出保障倍數」「固定支出表格」「固定支出 とは」），這是呼叫搜尋引擎的 suggest API（如 `https://www.google.com/complete/search?client=firefox&q=...`），Larch 目前只有一行固定的「Search: 輸入文字」。做法：`PaletteSearch` 或 `CommandPaletteView` 加非同步請求（debounce，避免每個按鍵都打網路），回來後插在 `openOrSearch` 之後、Tab/History 之前；要處理請求順序錯亂（晚送出的查詢先回來）與離線/失敗時不顯示。估點 **5**：第一個牽涉網路請求與非同步競態的 Palette 功能，debounce/race/失敗處理都要新寫，且要留意外部 API 相依與隱私（查詢字串送到 Google）。
+  2. **預設選取邏輯**：Arc 在有強匹配的既有項目（如標題完全等於輸入）時，預設高亮選的是那筆資料而不是「Search with Google」；Larch 目前 `results()` 永遠把 `openOrSearch` 放第一筆，`CommandPaletteView` 預設選取第一列。要討論怎麼定義「夠強的匹配」（如標題完全相等、或 `Fuzzy.score` 超過某門檻）才改變預設選取，避免打幾個字就跳走、選錯。估點 **3**：邏輯集中在 `PaletteSearch.results`/`Fuzzy.score`，改動範圍小，但門檻定義需要來回調整手感。
+  3. **空白輸入時的豐富建議列表**：Arc 空白時混合顯示釘選/最近常用（含內容摘要文字、Switch to Tab／Archived 等標籤），Larch 目前空白時只列「目前開啟中的 Tab」（`results()` 的 `!q.isEmpty` 才查歷史）。要做的話是空白時也納入釘選與最近歷史（依最近造訪/次數排序），但「內容摘要」這塊 Arc 應該是另外存了頁面文字索引，Larch 目前沒有、工程量較大，可以先不做，只做清單來源擴充。估點 **3**：排除內容摘要後，只是擴充 `results()` 空查詢時的來源（釘選 + 歷史）與排序，沿用既有 `PaletteModel` 結構。
 
 - Little Window 不搶走前景 App 焦點（2026-10-30 討論，仿 Arc）：
   1. **視窗化 App 在前景時**（如點 Slack 連結開 Little，畫面停留在 Slack）：`LittleWindow` 改成 `NSPanel` + `.nonactivatingPanel`，用 `orderFrontRegardless()` 顯示、不呼叫 `NSApp.activate`，改記住呼叫當下的 frontmost app 並在顯示後 reactivate 回去。估點 **5**：現有 Little 整套 key window 攔截（Esc/⌘W/⌘O/⌘Return 等，見 CLAUDE.md 第 23 點）要在「key window 但 app 非 active」狀態下重新驗證，WKWebView 的點擊/輸入手感也要重新確認。
@@ -24,10 +24,13 @@
 
 ## 已知缺口（未排序）
 - 邊用邊記的問題放這裡
-- 資料夾圖示/顏色、釘選「重設為原網址」、拖曳到資料夾上懸停自動展開、多選
-- 下載：可取消、下載清單；目前只顯示最新一筆
-- 說明頁上的上一頁/下一頁行為未驗證
-- 正式簽章與公證（Developer ID）；目前 ad-hoc
+- 資料夾圖示/顏色。估點 **3**：`PinNode`/`PinStore` 加欄位，側邊欄列（`SidebarRows.swift`）與右鍵選單加對應 UI，模式仿 Space 顏色推導但範圍小很多。
+- 釘選「重設為原網址」。估點 **2**：`PinStore` 加一個操作，把節點網址/標題/favicon 還原成綁定 Tab 當下的網址，邏輯單純。
+- 拖曳到資料夾上懸停自動展開。估點 **3**：`SidebarView` 拖曳目的地已有幾何判定（第 22 點），加「停留 N 毫秒後展開資料夾」的計時器與狀態，要避免跟既有插入線提示互相干擾。
+- 多選（Tab / 釘選的側邊欄多選批次操作，如多選後批次關閉/刪除/移動）。估點 **5**：History 視窗已有多選模式可參考（核取方塊 + 選取工具列），但側邊欄要再處理拖曳與多選共存、以及 Tab 與釘選混合選取時動作的可用性判斷。
+- 下載：可取消、下載清單；目前只顯示最新一筆。估點 **5**：`DownloadManager.swift` 目前應該只追蹤單筆狀態，要改成清單（含歷史）、新增取消（`WKDownload.cancel`）、加一個顯示清單的 UI（可能類似 History 視窗的簡化版）。
+- 說明頁上的上一頁/下一頁行為未驗證。估點 **1**：這是驗證 / 補 smoke check 的工作，不是新功能；真的發現壞掉才會另外估修復的點數。
+- 正式簽章與公證（Developer ID）；目前 ad-hoc。估點 **3**：主要是流程（申請 Developer ID、entitlements、`scripts/bundle.sh` 加簽章與 notarize 步驟），程式碼改動不多，但依賴 Apple Developer 帳號與 notarization 審核時間，等待時間不算入點數。
 
 ## 已完成
 - 單一視窗、側邊欄（⌘S）、圓角卡片與邊框拖曳
