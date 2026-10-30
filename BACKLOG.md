@@ -31,6 +31,11 @@
 - 下載：可取消、下載清單；目前只顯示最新一筆。估點 **5**：`DownloadManager.swift` 目前應該只追蹤單筆狀態，要改成清單（含歷史）、新增取消（`WKDownload.cancel`）、加一個顯示清單的 UI（可能類似 History 視窗的簡化版）。
 - 說明頁上的上一頁/下一頁行為未驗證。估點 **1**：這是驗證 / 補 smoke check 的工作，不是新功能；真的發現壞掉才會另外估修復的點數。
 - 正式簽章與公證（Developer ID）；目前 ad-hoc。估點 **3**：主要是流程（申請 Developer ID、entitlements、`scripts/bundle.sh` 加簽章與 notarize 步驟），程式碼改動不多，但依賴 Apple Developer 帳號與 notarization 審核時間，等待時間不算入點數。
+- Repo 轉 public 前準備（2026-10-30 審查，先不處理，記著備用）：
+   - 加 LICENSE：目前完全沒有授權聲明，公開前需先決定授權方式（MIT / Apache-2.0 / 其他）。估點 **1**。
+   - `docs/research/ardia-team-report.md` 含對 Ardia 維護者本人的背景調查（真名、個人網站暱稱、X 帳號、對其他副業專案的推測），公開前需要移除或簡化成不含個人背景調查細節的摘要；`ardia-audit-report.md`（程式碼/供應鏈安全審查）風險較低可視情況保留。若要從 git 歷史徹底清除，需用 `git filter-repo` 或 BFG 改寫整個歷史，不是單純刪除新 commit。估點 **2**。
+   - CLAUDE.md / `docs/decisions.md` 多處引用私有姊妹專案 `../my-browser`；公開後外部讀者連不到，建議加註「私有專案，僅供內部參考」。估點 **1**。
+   - 已確認沒問題、不用處理：追蹤檔案與完整 git 歷史都沒有 session.json/history.json/pins.json、API key、密碼等機密內容；commit 作者 email 是自己的 GitHub 帳號，本來就會公開；App 圖示是程式產生的原創圖形；`Package.swift` 沒有私有套件來源。
 
 ## 已完成
 - 單一視窗、側邊欄（⌘S）、圓角卡片與邊框拖曳
