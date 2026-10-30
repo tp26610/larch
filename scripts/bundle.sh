@@ -1,9 +1,11 @@
 #!/bin/bash
-# 把 release 版包成 build/Larch.app（ad-hoc 簽章）。用法：scripts/bundle.sh [版本號，預設 0.1.0]
+# 把 release 版包成 build/Larch.app（ad-hoc 簽章）。用法：scripts/bundle.sh [版本號，預設取最近的 git tag]
 set -euo pipefail
 cd "$(dirname "$0")/.."
 swift build -c release
-VERSION="${1:-0.1.0}"
+VERSION="${1:-$(git describe --tags --abbrev=0 2>/dev/null | sed "s/^v//")}"
+VERSION="${VERSION:-0.0.0}"
+BUILD="$(git rev-list --count HEAD 2>/dev/null || echo 1)"
 APP="build/Larch.app"
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
@@ -20,7 +22,7 @@ cat > "$APP/Contents/Info.plist" <<PLIST
   <key>CFBundleIconFile</key><string>AppIcon</string>
   <key>CFBundlePackageType</key><string>APPL</string>
   <key>CFBundleShortVersionString</key><string>${VERSION}</string>
-  <key>CFBundleVersion</key><string>1</string>
+  <key>CFBundleVersion</key><string>${BUILD}</string>
   <key>LSMinimumSystemVersion</key><string>14.0</string>
   <key>NSHighResolutionCapable</key><true/>
   <key>NSPrincipalClass</key><string>NSApplication</string>
