@@ -182,13 +182,38 @@ final class PinStore {
         changed()
     }
 
-    /// 開著的 Tab 更新時順便記住標題、網址之外的外觀（標題與 favicon），不觸發畫面重建。
-    func remember(_ id: UUID, title: String?, favicon: Data?) {
-        guard let n = find(id)?.node else { return }
+    /// 目前頁面是否已離開釘選的那一頁。只比 host（忽略 www.）+ path（忽略結尾斜線），query / fragment 不算；
+    /// 目前網址未知或非 http(s)（載入中、空白）一律視為沒離開。
+    static func isAway(pinURL: String?, current: URL?) -> Bool {
+        guard let pin = pinURL.flatMap(URL.init(string:)), let cur = current, InputNormalizer.isHTTP(cur) else { return false }
+        func key(_ u: URL) -> String {
+            var host = (u.host ?? "").lowercased()
+            if host.hasPrefix("www.") { host.removeFirst(4) }
+            var path = u.path
+            while path.count > 1 && path.hasSuffix("/") { path.removeLast() }
+            return host + (path.isEmpty ? "/" : path)
+        }
+        return key(pin) != key(cur)
+    }
+
+    /// 開著的 Tab 更新時順便記住「釘選那一頁」的標題與 favicon，不觸發畫面重建。
+    /// Tab 已離開釘選頁（`url` 與節點網址不同頁）時不更新，節點的標題與 favicon 固定代表釘選的那一頁；
+    /// 要改成目前這頁用 `replaceURL`。
+    func remember(_ id: UUID, title: String?, favicon: Data?, at url: URL?) {
+        guard let n = find(id)?.node, !Self.isAway(pinURL: n.url, current: url) else { return }
         var dirty = false
         if let title, !title.isEmpty, n.title != title { n.title = title; dirty = true }
         if let favicon, n.favicon != favicon { n.favicon = favicon; dirty = true }
         if dirty { saver.schedule { [weak self] in self?.save() } }
+    }
+
+    /// 明確把釘選頁換成目前這頁（Replace Pinned URL with Current）：網址、標題、favicon 一起更新。
+    func replaceURL(_ id: UUID, url: URL, title: String, favicon: Data?) {
+        guard let n = find(id)?.node, !n.isFolder, InputNormalizer.isHTTP(url) else { return }
+        n.url = url.absoluteString
+        if !title.isEmpty { n.title = title }
+        if let favicon { n.favicon = favicon }
+        changed()
     }
 
     func save() { storage?.write(Self.fileName, PinFile(roots: roots)) }

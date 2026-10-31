@@ -368,6 +368,7 @@ enum Smoke {
         try await trafficLightChecks(server, app)
         try await loadingChecks(server, app)
         try await pinChecks(server, app)
+        try await pinnedURLChecks(server, app)
         try await splitChecks(server, app)
         try await actionChecks(server, app)
     }
@@ -776,6 +777,53 @@ extension Smoke {
     /// 以 NSApp.sendEvent 送進真實按鍵路徑（含 first responder 與選單比對）。
     static func send(_ chars: String, _ mods: NSEvent.ModifierFlags, in window: NSWindow) {
         NSApp.sendEvent(keyEvent(chars, mods, in: window))
+    }
+
+    /// 釘選網址操作：節點的標題 / favicon 固定代表釘選那一頁，離開後列顯示「/ 目前標題」，
+    /// 只有明確的 Replace Pinned URL with Current 才會改節點；Back to Pinned URL 導回原頁。
+    static func pinnedURLChecks(_ server: FixtureServer, _ app: AppDelegate) async throws {
+        print("釘選網址操作")
+        check("isAway：同頁（忽略 www.、結尾斜線、query、fragment）不算離開",
+              !PinStore.isAway(pinURL: "https://www.example.com/a/", current: URL(string: "https://example.com/a?x=1#top")))
+        check("isAway：不同 path 或不同 host 算離開",
+              PinStore.isAway(pinURL: "https://example.com/a", current: URL(string: "https://example.com/b"))
+              && PinStore.isAway(pinURL: "https://example.com/a", current: URL(string: "https://other.com/a")))
+        check("isAway：目前網址未知或非 http(s) 不算離開",
+              !PinStore.isAway(pinURL: "https://example.com/a", current: nil)
+              && !PinStore.isAway(pinURL: "https://example.com/a", current: URL(string: "about:blank")))
+
+        let c = BrowserWindowController(dataStore: .nonPersistent(), storage: tempStorage("pinurl"), autosave: false)
+        let tm = c.tabs
+        let t = tm.newTab(url: server.url("/a"))
+        _ = await wait { t.pageTitle == "Page A" }
+        tm.select(t)
+        guard let node = tm.pin(t) else { check("釘選 /a", false); return }
+        let pinnedURL = server.url("/a").absoluteString
+        func row() -> TabRowView? { c.sidebar.rowViews.first { $0.pin?.id == node.id } }
+        check("剛釘選：沒離開、列顯示 Page A", row()?.showsAwayStyle == false && row()?.titleText == "Page A" && !c.activeTabAwayFromPin)
+
+        t.load(server.url("/b"))
+        _ = await wait { t.pageTitle == "Page B" }
+        check("導航到別頁：節點標題與網址不被覆蓋", node.title == "Page A" && node.url == pinnedURL, "\(node.title) \(node.url ?? "")")
+        check("離開釘選頁：列顯示「/ 目前標題」", row()?.showsAwayStyle == true && row()?.titleText == "/ Page B", row()?.titleText ?? "nil")
+        check("離開釘選頁：Palette 動作可用", PaletteActions.find("replacePinnedURL")?.isAvailable(c) == true
+              && PaletteActions.find("backToPinnedURL")?.isAvailable(c) == true)
+
+        c.backToPinnedURLAction()
+        _ = await wait { t.pageTitle == "Page A" && !tm.isAwayFromPin(t) }
+        check("Back to Pinned URL：導回原頁、列恢復", t.url?.path == "/a" && row()?.showsAwayStyle == false && row()?.titleText == "Page A")
+        check("回到釘選頁：Palette 動作不列", PaletteActions.find("replacePinnedURL")?.isAvailable(c) == false)
+
+        t.load(server.url("/b"))
+        _ = await wait { t.pageTitle == "Page B" }
+        c.replacePinnedURLAction()
+        check("Replace Pinned URL with Current：節點網址與標題換成目前頁", node.url == server.url("/b").absoluteString && node.title == "Page B")
+        check("Replace 後不再算離開", row()?.showsAwayStyle == false && row()?.titleText == "Page B" && !c.activeTabAwayFromPin)
+
+        // 關閉後灰色列用節點的網址重開（是替換後的頁面，不是最初的）
+        tm.close(t)
+        check("關閉後節點仍在、網址是替換後的", tm.pins.find(node.id) != nil && tm.pins.find(node.id)?.node.url == server.url("/b").absoluteString)
+        c.window.close()
     }
 
     static func closeKeyChecks(_ server: FixtureServer, _ app: AppDelegate) async throws {

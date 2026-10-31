@@ -236,7 +236,21 @@ final class BrowserWindowController: NSObject, NSTextFieldDelegate, NSWindowDele
         if let pin = row.pin {
             m.addItem(menuItem("Unpin", #selector(unpinClicked(_:)), id: pin.id))
             m.addItem(menuItem("Rename", #selector(renameClicked(_:)), id: pin.id))
-            if row.tab != nil { m.addItem(menuItem("Close Tab", #selector(closeRowClicked(_:)), id: pin.id)) }
+            if let live = row.tab {
+                let away = tabs.isAwayFromPin(live)
+                let sub = NSMenu()
+                sub.autoenablesItems = false
+                let replace = menuItem("Replace Pinned URL with Current", #selector(replacePinnedURLClicked(_:)), id: pin.id)
+                let back = menuItem("Back to Pinned URL", #selector(backToPinnedURLClicked(_:)), id: pin.id)
+                replace.isEnabled = away
+                back.isEnabled = away
+                sub.addItem(replace)
+                sub.addItem(back)
+                let parent = NSMenuItem(title: "Edit Pinned Page", action: nil, keyEquivalent: "")
+                parent.submenu = sub
+                m.addItem(parent)
+                m.addItem(menuItem("Close Tab", #selector(closeRowClicked(_:)), id: pin.id))
+            }
         } else if let tab = row.tab {
             m.addItem(menuItem("Pin Tab", #selector(pinTabClicked(_:)), id: tab.id))
             m.addItem(menuItem("Rename", #selector(renameClicked(_:)), id: tab.id))
@@ -271,6 +285,20 @@ final class BrowserWindowController: NSObject, NSTextFieldDelegate, NSWindowDele
     @objc private func unpinClicked(_ sender: NSMenuItem) {
         if let id = sender.representedObject as? UUID, let n = tabs.pins.find(id)?.node { tabs.unpin(n) }
     }
+
+    @objc private func replacePinnedURLClicked(_ sender: NSMenuItem) {
+        if let id = sender.representedObject as? UUID, let t = tabs.liveTab(forPin: id) { tabs.replacePinnedURL(with: t) }
+    }
+
+    @objc private func backToPinnedURLClicked(_ sender: NSMenuItem) {
+        if let id = sender.representedObject as? UUID, let t = tabs.liveTab(forPin: id) { tabs.backToPinnedURL(t) }
+    }
+
+    /// 目前 Tab 是釘選的且已離開釘選頁（Command Palette 動作的可用條件）。
+    var activeTabAwayFromPin: Bool { tabs.activeTab.map(tabs.isAwayFromPin) ?? false }
+
+    func replacePinnedURLAction() { if let t = tabs.activeTab { tabs.replacePinnedURL(with: t) } }
+    func backToPinnedURLAction() { if let t = tabs.activeTab { tabs.backToPinnedURL(t) } }
 
     @objc private func closeRowClicked(_ sender: NSMenuItem) {
         guard let id = sender.representedObject as? UUID else { return }
@@ -419,11 +447,10 @@ final class BrowserWindowController: NSObject, NSTextFieldDelegate, NSWindowDele
     private func tabChanged(_ tab: Tab) {
         scheduleSessionSave()
         rows[tab.pinID ?? tab.id]?.update()
-        var faviconPNG: Data?
-        if let img = tab.favicon, let tiff = img.tiffRepresentation { faviconPNG = NSBitmapImageRep(data: tiff)?.representation(using: .png, properties: [:]) }
+        let faviconPNG = tab.faviconPNG
         if let pid = tab.pinID {
             let hasTitle = tab.customTitle?.isEmpty == false || !tab.pageTitle.isEmpty
-            tabs.pins.remember(pid, title: hasTitle ? tab.displayTitle : nil, favicon: faviconPNG)
+            tabs.pins.remember(pid, title: hasTitle ? tab.displayTitle : nil, favicon: faviconPNG, at: tab.displayURL)
         }
         if let png = faviconPNG, let url = tab.url, InputNormalizer.isHTTP(url) {
             tabs.history?.updateFavicon(url: url, favicon: png)
