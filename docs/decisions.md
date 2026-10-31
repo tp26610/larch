@@ -55,6 +55,12 @@
 - 技術限制：Larch 是 macOS 專用（AppKit、WebKit），Cloud session 一般是 Linux 環境，無法編譯與跑 smoke，只能盲寫。若要用，得先有 GitHub Actions 的 macOS CI（`swift build` + smoke；macOS 執行時間計費倍率高，且 smoke 需要視窗環境，能否在 Actions 跑未驗證）。
 - 若改走 PR，另需處理：smoke 並行會搶焦點與共用資料目錄；功能多半動同幾個檔案，並行 PR 易衝突。
 
+### D11. 暫不改用資料庫，資料維持 JSON
+- 現況：歷史上限 3000 筆（`History.swift` 的 `limit`），釘選、session、偏好都很小；整份載入記憶體，搜尋是陣列掃描，寫入以 `Debouncer` 整檔重寫。
+- 不換的理由：專案目前零依賴；換 DB 要重做 `Storage.swift` 的容錯讀寫與 smoke 的暫存路徑隔離，還要寫遷移；JSON 壞了可直接用文字編輯器修。
+- 重新評估的觸發條件（門檻是粗估，沒實測，到時先量啟動時間與檔案大小）：歷史上限要拉到數萬筆以上或 JSON 超過約 10–20 MB；需要頁面內容全文搜尋（SQLite FTS5）；需要聚合統計類查詢；多個 process 同時寫入或跨裝置同步；實際遇過 JSON 寫到一半損毀。
+- 若要換，只動 `HistoryStore`，釘選與 session 資料小且整棵樹存取，繼續用 JSON。換之前先把 favicon 拆成獨立檔案或以 host 去重，通常就能把檔案縮回小量。
+
 ## 3. 外部評估：Ardia（真 Chromium 的第二瀏覽器）
 
 - Ardia（https://ardia.dev ，repo `mantrakp04/ardia`）是 Arc 式側邊欄、真 Chromium、免費開源的 Mac 瀏覽器，Google 登入不會像 Electron 被擋（它用 Chrome 自己的框架，這點我們沒有實際驗證）。
