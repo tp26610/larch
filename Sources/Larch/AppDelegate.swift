@@ -73,15 +73,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc func copyURLAsMarkdown() { controller.copyURLAsMarkdown() }
     @objc func toggleExternalLittle() { controller.prefs.externalLinksInLittle.toggle() }
 
-    /// Little 為 key window 時只允許能套用在 Little 頁面的動作（關閉、重新整理、上一頁/下一頁、縮放、複製網址）；
-    /// 其餘（新 Tab、Pin、側邊欄、還原、尋找、⌘L…）一律停用，不會悄悄動到主視窗。
-    private var littleAllowed: Set<Selector> {
-        [#selector(closeTab), #selector(reload), #selector(goBack), #selector(goForward), #selector(zoomIn), #selector(zoomOut),
-         #selector(zoomReset), #selector(copyURL), #selector(copyURLAsMarkdown), #selector(toggleExternalLittle), #selector(makeDefaultBrowser)]
+    /// 輔助視窗（Little、History、Task Manager）為 key window 時一律允許的動作：與主視窗 Tab 無關。
+    private var auxiliaryAllowed: Set<Selector> {
+        [#selector(closeTab), #selector(toggleExternalLittle), #selector(makeDefaultBrowser),
+         #selector(showHistory), #selector(clearHistory), #selector(showTaskManager)]
     }
 
+    /// 以頁面為目標的動作（重新整理、上一頁/下一頁、縮放、複製網址），只有 Little 這類有自己頁面的視窗才允許。
+    private var pageActions: Set<Selector> {
+        [#selector(reload), #selector(goBack), #selector(goForward), #selector(zoomIn), #selector(zoomOut),
+         #selector(zoomReset), #selector(copyURL), #selector(copyURLAsMarkdown)]
+    }
+
+    /// 輔助視窗為 key window 時，其餘會動主視窗的項目（新 Tab、Pin、側邊欄、還原、尋找、⌘L…）一律停用，不會悄悄動到主視窗。
     func validateMenuItem(_ item: NSMenuItem) -> Bool {
-        if controller?.keyLittle != nil, item.target === self, let action = item.action, !littleAllowed.contains(action) { return false }
+        if let aux = controller?.keyAuxiliary, item.target === self, let action = item.action {
+            let allowed = aux.handlesPageActions ? auxiliaryAllowed.union(pageActions) : auxiliaryAllowed
+            if !allowed.contains(action) { return false }
+        }
         if item.action == #selector(toggleExternalLittle) { item.state = controller?.prefs.externalLinksInLittle == true ? .on : .off }
         return true
     }

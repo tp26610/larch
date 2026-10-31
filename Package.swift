@@ -6,6 +6,7 @@ let package = Package(
     platforms: [.macOS(.v14)],
     targets: [
         .executableTarget(name: "Larch", path: "Sources/Larch"),
+        .testTarget(name: "LarchTests", dependencies: ["Larch"], path: "Tests/LarchTests"),
     ],
     swiftLanguageModes: [.v5]
 )

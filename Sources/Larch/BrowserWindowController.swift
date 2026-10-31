@@ -654,14 +654,21 @@ final class BrowserWindowController: NSObject, NSTextFieldDelegate, NSWindowDele
     }
 
     @objc func closeCurrentTab() {
-        // History 視窗為 key window 時，⌘W 關閉它本身，絕不動主視窗的 Tab。
-        if let hw = historyWindow, hw.window?.isKeyWindow == true { hw.close(); return }
-        // Task Manager 視窗為 key window 時同理，見 CLAUDE.md 第 26 點的教訓。
-        if let tmw = taskManagerWindow, tmw.window?.isKeyWindow == true { tmw.close(); return }
-        // Little 為 key window 時，⌘W 只關 Little，絕不動主視窗的 Tab。
-        if let little = keyLittle { little.close(); return }
+        // 輔助視窗（Little、History、Task Manager…）為 key window 時，⌘W 只關它本身，絕不動主視窗的 Tab。
+        if let aux = keyAuxiliary { aux.close(); return }
         if let tab = tabs.activeTab { tabs.close(tab) }
     }
+
+    /// 所有獨立於主視窗的輔助視窗。新增獨立視窗時加在這裡（並實作 `AuxiliaryWindow`）。
+    var auxiliaryWindows: [any AuxiliaryWindow] {
+        var all: [any AuxiliaryWindow] = []
+        if let historyWindow { all.append(historyWindow) }
+        if let taskManagerWindow { all.append(taskManagerWindow) }
+        return all + littles
+    }
+
+    /// 目前是 key window 的輔助視窗；沒有代表主視窗（或無）為 key。
+    var keyAuxiliary: (any AuxiliaryWindow)? { auxiliaryWindows.first { $0.auxWindow?.isKeyWindow == true } }
 
     /// 外部要求開啟（預設瀏覽器的連結、.html 檔）。http(s) 連結依設定在 Little 視窗開啟（預設）或新 Tab；
     /// 都不取代現有分頁。.html 檔一律新 Tab。若目前只有一個全新的空白 Tab（冷啟動），就直接用它，不多開空白 Tab。

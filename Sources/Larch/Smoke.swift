@@ -765,6 +765,11 @@ extension Smoke {
         tmw.window?.makeKeyAndOrderFront(nil)
         let tabCountBeforeW = tm.tabs.count
         check("Task Manager 視窗為 key window", tmw.window?.isKeyWindow == true)
+        check("keyAuxiliary 指向 Task Manager", c.keyAuxiliary === tmw)
+        func enabled(_ sel: Selector) -> Bool { app.validateMenuItem({ let i = NSMenuItem(title: "", action: sel, keyEquivalent: ""); i.target = app; return i }()) }
+        check("輔助視窗為 key 時停用動主視窗的選單項（New Tab / Pin / Reload）",
+              !enabled(#selector(AppDelegate.newTab)) && !enabled(#selector(AppDelegate.togglePin)) && !enabled(#selector(AppDelegate.reload)))
+        check("輔助視窗為 key 時仍可用 Close Tab / History", enabled(#selector(AppDelegate.closeTab)) && enabled(#selector(AppDelegate.showHistory)))
         check("⌘W 關閉 Task Manager 視窗本身", press("w", .command, in: tmw.window!) && tmw.window?.isVisible == false)
         check("⌘W 關閉 Task Manager 視窗不動 Tab", tm.tabs.count == tabCountBeforeW)
 
