@@ -18,7 +18,7 @@ Brian（Senior Engineering Manager，台灣，用繁體中文溝通）因 Arc �
 ```bash
 swift build
 swift run Larch                 # 執行
-scripts/smoke.sh                    # 405 項煙霧測試，驅動真實視窗與 WKWebView（會開視窗）
+scripts/smoke.sh                    # 煙霧測試（項數見跑完的輸出），驅動真實視窗與 WKWebView（會開視窗）
 scripts/bundle.sh                   # build/Larch.app（Info.plist 含 http/https、html 宣告）
 scripts/dmg.sh                      # build/Larch-<版本>-arm64.dmg；版本號讀根目錄 VERSION（發版流程：改 VERSION、commit、打同名 tag `v<版本>`、gh release create）
 scripts/install.sh                  # 安裝到 /Applications（見 README）
@@ -69,7 +69,7 @@ Smoke.swift                      FixtureServer（本機假網站）+ smoke 檢�
 3. **權限預設全拒**：媒體擷取一律 deny；僅啟用 element fullscreen。非 http/https/about/blob 的導覽（file:、mailto:、自訂 scheme）一律取消。
 4. **網頁來源的標題與網址一律 `stringValue` 純文字顯示**，不用 attributed/HTML。
 5. 關閉最後一個 Tab 後保持空畫面（仿 Arc：`activeTab == nil`，`CardView.showEmpty()`），不再補空白 Tab（否則空白 Tab 的 X 看起來關不掉）；啟動時仍會有一個空白 Tab。空畫面時從網址列輸入會開新 Tab。空白（無 http URL）的 Tab 不進 closedStack。
-6. 預設瀏覽器註冊、外部連結走 Little，需要打包後的 .app 且 Info.plist 宣告 http/https（尚未做，見 BACKLOG）。
+6. 預設瀏覽器註冊、外部連結走 Little，需要打包後的 .app 且 Info.plist 宣告 http/https（`scripts/bundle.sh` 已處理，Brian 已實際設為預設瀏覽器日常使用）。未打包的執行檔與 `--live-check` 不讀 Info.plist。
 7. smoke 用 `NSApp.mainMenu.performKeyEquivalent` 走真實選單比對，等同按鍵路徑。
 8. 沒有螢幕錄製權限時 `screencapture` 會失敗；改用 `--live-check` 存 PNG。
 
@@ -106,7 +106,7 @@ Smoke.swift                      FixtureServer（本機假網站）+ smoke 檢�
 28. **Task Manager**（`TaskManagerWindow.swift`，仿 Arc）：架構仿 History 視窗（一般標題列 NSWindow，不是覆蓋層），但資料即時變化，不是一次性讀取——`TaskManagerWindowController.show()` 立刻 `reload()` 一次並啟動 1 秒 `Timer`，`windowWillClose`（`NSWindowDelegate`）停止並清空 timer，避免視窗關閉後背景還在空轉。**v1 範圍只列主視窗的一般 Tab**（`tabs.tabs`），不含 Little 視窗的 Tab（Little 的 Tab 不在這個清單裡，架構上要另外接線，之後有需要再補）。**取得 process 資訊靠兩個私有介面**：`WKWebView` 的 `_webProcessIdentifier`（私有 KVC，`responds(to:)` 防呆，取不到該列記憶體顯示「—」，不影響其他列）取得 WebContent process 的 PID；`proc_pidinfo(PROC_PIDTASKINFO)`（系統 libproc）查常駐記憶體（RSS）。這跟 UA 補字尾（第 2 點）、Open Web Inspector 用 `_inspector`（第 17 點）是同一類「用私有介面補齊功能，版本變動就重新驗證」的風險，不是新的做法。**一分頁一個 process 的假設**：2026-10-29 PoC 驗證過，就算兩個分頁開同一個網域也拿到不同 PID，所以 UI 不用處理「多分頁共用一個 process」的合併顯示（跟 Chrome/Arc 可能共用 renderer process 的行為不同，WKWebView 預設設定下看起來是分開的，但這只驗證過少量分頁、同一次執行，不保證所有情境都這樣）。依記憶體從高到低排序，`reload()` 整批重建列（跟 History 一樣，Tab 數量不多，效能沒問題）。**「End Process」按鈕＝關閉分頁**（呼叫既有的 `tabs.close(tab)`），**不是真的 kill -9**：WebContent process 被 kill 後 WKWebView 的後續行為沒驗證過（可能顯示當機頁、可能需要手動 reload），關閉分頁一樣能釋放資源、行為可預期，風險低。點列本身切換到該分頁。選單加在「Window」（`AppDelegate.buildMenu`，無預設快捷鍵）；Command Palette 動作表加 `taskManager`。**`closeCurrentTab()` 補上 key window 判斷**（跟第 26 點 History/Little 一樣的教訓）：Task Manager 視窗為 key window 時 ⌘W 關視窗本身，不動主視窗 Tab。
 
 ## 驗證狀況
-- smoke 455/455 通過（macOS 26 / Swift 6.2.4）；accounts.google.com 登入頁載入成功（含 favicon）。
+- smoke 全數通過（最後一次記錄為 455 項，macOS 26 / Swift 6.2.4；項數會隨新增 check 變動，以實際輸出為準）；accounts.google.com 登入頁載入成功（含 favicon）。
 - 冷啟動與已執行時 `open -a` 開外部連結已用打包的 .app 實測（session.json 有新 Tab）。
 - Google 實際帳密登入與重開後保持登入：已實測，正常。
 - Split View：卡片左右分割、側邊欄配對列並排顯示，已在真實視窗用滑鼠拖曳實測。

@@ -25,6 +25,14 @@
 
 - 主題色可自選（2026-10-30）：目前側邊欄與視窗外框固定鼠尾草綠（`Theme.swift`），改成使用者可從幾組預設主題色中挑選，預設色參考 Arc 的主題色（實際色票需對照 Arc 截圖整理）。做法：`Theme` 的顏色改由「主色」推導 hover / active / 進度條 / 選取底色等，確保白字對比（可與 Spaces 資料模型的「顏色」共用同一套推導函式）；選色入口可放選單或 Command Palette 動作（如 Change Theme Color…），選擇存 `Preferences`（UserDefaults），切換時即時重繪。與項目 2 Spaces 的重疊：Spaces 做完後每個 Space 自帶顏色，這項就退化成「全域預設色 / Space 配色預設色票」，所以若 Spaces 近期要做，建議併入 Spaces 的「資料模型」子項而不單獨做。估點 **3**：主要是 `Theme` 顏色改成可變並由單一主色推導、預設色票與選色 UI，既有視圖要確認都吃 `Theme` 而非寫死色碼。
 
+## 技術債（2026-10-31 盤點；依「成本低、防呆價值高」優先排序；Spaces 優先權低，所以拆 controller 降為碰到再做）
+1. 私有介面預警：`_webProcessIdentifier`、`_inspector`、UA 補字尾目前壞了只會靜默降級。smoke 加一組「私有介面仍可用」的斷言，失敗時明確報錯，macOS 大版本更新後才會被發現。估點 **2**。
+2. CI：目前沒有 `.github`。先加只跑 `swift build` 的 workflow（smoke 要開真實視窗，不能在 headless 環境跑，不納入）。估點 **2**。
+3. 「key window 分派」收斂：`closeCurrentTab()` 目前逐一檢查 History / Task Manager / Little 是否為 key window（CLAUDE.md 第 23、26、28 點同類 bug 出現三次），每加一個獨立視窗就要手動補。改成「目前 key 視窗負責處理」的協定或 responder chain，並檢查其他固定 target 的選單動作。估點 **3**。
+4. 純邏輯單元測試：`Fuzzy`、`InputNormalizer`、`PinStore` 的樹操作（移動/刪除/防循環）改用 XCTest/Swift Testing，跑得快且不用開視窗；executableTarget 可用 `@testable import`。估點 **3**。
+5. 拆 `BrowserWindowController.swift`（853 行、88 個函式）：Little、輔助視窗（History / Task Manager）、拖曳落點 `resolveDrop` 拆成 extension 或獨立 coordinator，日後要大改（如 Spaces，目前優先權低、可能不做）時才不會全擠在這一個類別。估點 **5**：純搬移不改行為，但牽動面廣，每步都要靠 smoke 確認沒壞。 **不急**：沒有近期功能卡在它，改到該區域時再順手拆。
+6. `Smoke.swift`（2162 行，約佔原始碼 29%）編進正式執行檔，出貨的 app 帶著假網站伺服器。至少分檔，長期考慮拆成獨立 target。估點 **5**：要處理 smoke 與主程式之間的 internal 存取與 `--smoke` 進入點。
+
 ## 已知缺口（未排序）
 - 邊用邊記的問題放這裡
 - 資料夾圖示/顏色（2026-10-30 定案範圍，Brian 對 Arc 細節沒有強烈想法，以最小可用為原則，日後看 Arc 實際畫面再調）：① **顏色**只有一個主色，從一組預設色票挑選（可與主題色的色票共用），只用來給資料夾圖示上色，不改列背景、不改文字色；沒設定就維持現在的預設外觀。② **圖示**以 emoji 為主（系統 emoji 選擇器或一小組常用 emoji），不做 SF Symbol 挑選器；有 emoji 時顏色不生效（emoji 本身帶色），所以顏色只作用在預設資料夾圖示。③ 資料：`PinNode`（folder）加可選的 `icon`（emoji 字串）與 `color`（色票識別字串）兩個欄位，存 `pins.json`，舊檔缺欄位用預設，載入時對壞值容錯。④ 入口：資料夾右鍵選單加「Change Icon…」「Change Color…」；Command Palette 動作暫不做。⑤ 展開/收合時圖示維持不變（不做展開版圖示）。不做的：自訂色碼挑選器、SF Symbol 挑選器、列背景染色。估點 **3**：`PinNode`/`PinStore` 加欄位與容錯載入，側邊欄資料夾列（`SidebarRows.swift`）依欄位繪製，右鍵選單加兩項與一個簡單的選色/選 emoji 面板，需補 smoke。
@@ -56,3 +64,4 @@
 - ⌘+點連結：比照 Option+點連結的攔截方式，在 `Tab.decidePolicyFor` 新增 `onCommandClick`，於 `TabManager.attach` 接到 `newTab(activate: false, after: 來源 Tab)`，插在來源之後、背景開新 Tab 不切換焦點；⌥⌘+點、非 http(s)、非點連結事件不受影響。
 - Task Manager（獨立視窗，`TaskManagerWindow.swift`，仿 Arc）：列出主視窗的一般 Tab（v1 不含 Little），依記憶體從高到低排序（`_webProcessIdentifier` 取 PID、`proc_pidinfo` 查 RSS，都是私有/系統介面，拿不到時該列顯示「—」），視窗開著時每 1 秒刷新；每列「End Process」＝關閉分頁（不是真的 kill -9），點列本身切換到該分頁；選單加在 Window、Command Palette 動作 Show Task Manager；`closeCurrentTab()` 補上這個視窗的 key window 判斷（⌘W 關視窗本身不動 Tab）。
 - Repo 轉 public 前準備（2026-10-30）：加 MIT LICENSE；`ardia-team-report.md` 精簡成不含維護者個人背景的摘要；CLAUDE.md / `docs/decisions.md` 標註 `../my-browser` 為私有專案。注意：舊版報告仍留在 git 歷史，若要徹底清除需 `git filter-repo` 改寫歷史（本次選擇不做）。
+- 技術債：CLAUDE.md 文件不一致修正（2026-10-31）：指令區與驗證區的 smoke 項數不再寫死（驗證區註明最後一次記錄的 455 項），第 6 點「預設瀏覽器註冊尚未做」改為已處理。
