@@ -696,6 +696,9 @@ extension Smoke {
         // History 視窗為 key window 時，⌘W（固定 target 的選單項）應關閉它本身，絕不動主視窗的 Tab。
         let tabCountBeforeW = tm.tabs.count
         check("History 視窗為 key window", c.historyWindow?.window?.isKeyWindow == true)
+        let hwTabs = tm.tabs.count
+        _ = press("t", .command, in: c.historyWindow!.window!)
+        check("History 為 key 時 ⌘T 不叫出命令列", !c.root.palette.isOpen && tm.tabs.count == hwTabs)
         check("⌘W 關閉 History 視窗本身", press("w", .command, in: c.historyWindow!.window!) && c.historyWindow?.window?.isVisible == false)
         check("⌘W 關閉 History 視窗不動 Tab", tm.tabs.count == tabCountBeforeW)
 
