@@ -358,6 +358,7 @@ enum Smoke {
         try await historyWindowChecks(server, app)
         try await historyMenuChecks(server, app)
         try await taskManagerWindowChecks(server, app)
+        try await privateAPIChecks(server, app)
         try await closeKeyChecks(server, app)
         try await littleChecks(server, app)
         try await littleRoutingChecks(server, app)
@@ -702,6 +703,29 @@ extension Smoke {
     }
 
     /// Task Manager 視窗：列出一般 Tab、記憶體文字格式、End Process 關閉分頁、key window 時 ⌘W 關視窗本身不動 Tab。
+    /// 私有介面預警：Task Manager 的 PID、Open Web Inspector、UA 字尾都靠 WebKit 私有或系統介面，
+    /// 壞掉時各自的 `responds(to:)` 防呆只會靜默降級（記憶體欄變「—」、動作消失）；macOS 大版本更新後
+    /// 跑 smoke，這組檢查會明確指出是哪一個介面失效。
+    static func privateAPIChecks(_ server: FixtureServer, _ app: AppDelegate) async throws {
+        print("私有介面預警")
+        let c = app.controller!
+        let tm = c.tabs
+        let t = tm.newTab(url: server.url("/a"))
+        _ = await wait { t.isLoading == false }
+        tm.select(t)
+
+        let pid = TaskManagerStats.pid(for: t.webView)
+        check("私有介面 _webProcessIdentifier 取得有效 PID", (pid ?? 0) > 0, "\(String(describing: pid))")
+        check("proc_pidinfo 查得到該 process 的常駐記憶體", pid.flatMap(TaskManagerStats.residentMB).map { $0 > 0 } ?? false)
+
+        check("私有介面 _inspector 存在且回應 show（Open Web Inspector 可用）", c.canOpenInspector)
+
+        let ua = (try? await t.webView.evaluateJavaScript("navigator.userAgent")) as? String ?? ""
+        check("UA 含 Version/X Safari/Y 字尾", ua.range(of: #"Version/\d+(\.\d+)* Safari/\d+"#, options: .regularExpression) != nil, ua)
+
+        tm.close(t)
+    }
+
     static func taskManagerWindowChecks(_ server: FixtureServer, _ app: AppDelegate) async throws {
         print("Task Manager 視窗")
         let c = app.controller!
