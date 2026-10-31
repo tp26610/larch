@@ -25,6 +25,9 @@ cat > "$APP/Contents/Info.plist" <<PLIST
   <key>LSMinimumSystemVersion</key><string>14.0</string>
   <key>NSHighResolutionCapable</key><true/>
   <key>NSPrincipalClass</key><string>NSApplication</string>
+  <key>NSAppTransportSecurity</key><dict>
+    <key>NSAllowsArbitraryLoadsInWebContent</key><true/>
+  </dict>
   <key>LSApplicationCategoryType</key><string>public.app-category.productivity</string>
   <key>CFBundleURLTypes</key><array><dict>
     <key>CFBundleURLName</key><string>Web URL</string>
@@ -40,5 +43,6 @@ cat > "$APP/Contents/Info.plist" <<PLIST
 </dict></plist>
 PLIST
 plutil -lint "$APP/Contents/Info.plist" >/dev/null
+[ "$(plutil -extract NSAppTransportSecurity.NSAllowsArbitraryLoadsInWebContent raw "$APP/Contents/Info.plist")" = true ] || { echo "Info.plist 缺 ATS 網頁內容例外" >&2; exit 1; }
 codesign --force --sign - "$APP"
 echo "完成：$APP"

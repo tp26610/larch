@@ -32,6 +32,7 @@
 - 多選（Tab / 釘選的側邊欄多選批次操作，如多選後批次關閉/刪除/移動）。估點 **5**：History 視窗已有多選模式可參考（核取方塊 + 選取工具列），但側邊欄要再處理拖曳與多選共存、以及 Tab 與釘選混合選取時動作的可用性判斷。
 - 下載：可取消、下載清單；目前只顯示最新一筆。估點 **5**：`DownloadManager.swift` 目前應該只追蹤單筆狀態，要改成清單（含歷史）、新增取消（`WKDownload.cancel`）、加一個顯示清單的 UI（可能類似 History 視窗的簡化版）。
 - 說明頁上的上一頁/下一頁行為未驗證。估點 **1**：這是驗證 / 補 smoke check 的工作，不是新功能；真的發現壞掉才會另外估修復的點數。
+- http 網站的安全處理（2026-10-31，起因：信件追蹤連結 `http://` 在 Larch 報 `NSURLErrorDomain -1022`，已在 `scripts/bundle.sh` 的 Info.plist 加 `NSAllowsArbitraryLoadsInWebContent` 放行 http，Brian 已實測該連結可開（2026-10-31））：放行後補兩項保守措施。① **優先用 https**（估點 **3**）：網址列輸入或外部連結為 http 時先試 https，失敗（連線錯誤、逾時）才退回原本的 http，仿 Safari / Chrome 的 HTTPS-first；要決定逾時門檻、`localhost` 與 IP 位址不升級、退回時不要重複寫歷史，需補 smoke。② **http 頁面「不安全」標示**（估點 **2**）：目前頁為 http（非 localhost）時，網址列顯示警示圖示與 toolTip；只改顯示，不擋載入。注意 `--live-check` 與未打包的執行檔不讀 Info.plist，重現不出 ATS 錯誤，驗證要用打包後的 .app。
 - 正式簽章與公證（Developer ID）；目前 ad-hoc。估點 **3**：主要是流程（申請 Developer ID、entitlements、`scripts/bundle.sh` 加簽章與 notarize 步驟），程式碼改動不多，但依賴 Apple Developer 帳號與 notarization 審核時間，等待時間不算入點數。
 ## 已完成
 - 單一視窗、側邊欄（⌘S）、圓角卡片與邊框拖曳
