@@ -29,6 +29,8 @@ final class TabRowView: NSView, NSTextFieldDelegate, SidebarRow {
     var closeIconName: String { closeButton.image?.accessibilityDescription ?? "" }
     var closeToolTip: String? { closeButton.toolTip }
     var isShowingSpinner: Bool { !spinner.isHidden }
+    /// 釘選的 Tab 已離開釘選頁（用釘選頁 favicon + 「/ 目前標題」顯示）。
+    var showsAwayStyle: Bool { pin != nil && tab != nil && PinStore.isAway(pinURL: pin?.url, current: tab?.displayURL) }
     var isShowingSplitBadge: Bool { !splitBadge.isHidden }
     var titleText: String { titleLabel.stringValue }
     var isActive = false { didSet { refreshBackground() } }
@@ -136,10 +138,13 @@ final class TabRowView: NSView, NSTextFieldDelegate, SidebarRow {
     /// 從 Tab（或釘選節點）狀態同步畫面；改名中不動標題欄位。
     func update() {
         let gray = tab == nil
-        titleLabel.stringValue = tab?.displayTitle ?? pin?.title ?? ""
+        let away = showsAwayStyle
+        // 釘選 Tab 離開釘選頁：「釘選頁 favicon + / + 目前標題」，一眼看出這是釘選但已不在原頁。
+        titleLabel.stringValue = away ? "/ " + (tab?.displayTitle ?? "") : tab?.displayTitle ?? pin?.title ?? ""
         let loading = tab?.isLoading ?? false
-        let host = (tab?.url ?? pin?.url.flatMap(URL.init(string:)))?.host
-        let favicon = tab?.favicon ?? pin?.favicon.flatMap { NSImage(data: $0) }
+        let host = (away ? pin?.url.flatMap(URL.init(string:)) : tab?.url ?? pin?.url.flatMap(URL.init(string:)))?.host
+        let pinFavicon = pin?.favicon.flatMap { NSImage(data: $0) }
+        let favicon = away ? pinFavicon ?? tab?.favicon : tab?.favicon ?? pinFavicon
         if loading {
             iconView.isHidden = true
             placeholder.isHidden = true

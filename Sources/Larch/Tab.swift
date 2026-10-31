@@ -38,6 +38,12 @@ final class Tab: NSObject, WKNavigationDelegate, WKUIDelegate {
     /// 使用者要求載入的網址；頁面還沒 commit 前 webView.url 是 nil，session 存檔需要它。
     private(set) var requestedURL: URL?
     var url: URL? { webView.url }
+
+    /// favicon 的 PNG（存進釘選節點與歷史用）。
+    var faviconPNG: Data? {
+        guard let tiff = favicon?.tiffRepresentation else { return nil }
+        return NSBitmapImageRep(data: tiff)?.representation(using: .png, properties: [:])
+    }
     /// UI 與 session 看到的網址。
     var displayURL: URL? { errorURL ?? url ?? requestedURL }
     /// 載入失敗時顯示說明頁；此時網址列仍顯示失敗的網址。

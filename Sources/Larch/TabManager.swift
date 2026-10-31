@@ -182,6 +182,26 @@ final class TabManager {
         onStructureChange?()
     }
 
+    /// 釘選的 Tab 目前是否已離開釘選的那一頁。
+    func isAwayFromPin(_ tab: Tab) -> Bool {
+        guard let id = tab.pinID, let node = pins.find(id)?.node else { return false }
+        return PinStore.isAway(pinURL: node.url, current: tab.displayURL)
+    }
+
+    /// Replace Pinned URL with Current：釘選頁改成這個 Tab 目前的頁面（標題與 favicon 一併更新）。
+    func replacePinnedURL(with tab: Tab) {
+        guard let id = tab.pinID, let url = tab.displayURL, InputNormalizer.isHTTP(url) else { return }
+        let title = tab.customTitle ?? (tab.pageTitle.isEmpty ? (url.host ?? url.absoluteString) : tab.pageTitle)
+        pins.replaceURL(id, url: url, title: title, favicon: tab.faviconPNG)
+        tab.onChange?(tab)
+    }
+
+    /// Back to Pinned URL：把 Tab 導回釘選的網址。
+    func backToPinnedURL(_ tab: Tab) {
+        guard let id = tab.pinID, let url = pins.find(id)?.node.url.flatMap(URL.init(string:)) else { return }
+        tab.load(url)
+    }
+
     func togglePin(_ tab: Tab) {
         if let id = tab.pinID, let node = pins.find(id)?.node { unpin(node) } else { pin(tab) }
     }
