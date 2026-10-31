@@ -27,7 +27,7 @@ struct Preferences {
     /// 使用者拖曳調整過的側邊欄寬度；超出範圍（或沒存過）用預設值。
     var sidebarWidth: CGFloat {
         get {
-            let w = defaults.double(forKey: "sidebarWidth")
+            let w = defaults.double(forKey: "sidebarWidth").rounded() // 舊版存過帶小數的寬度
             return Theme.sidebarWidthRange.contains(w) ? w : Theme.sidebarWidth
         }
         nonmutating set { defaults.set(Double(newValue), forKey: "sidebarWidth") }

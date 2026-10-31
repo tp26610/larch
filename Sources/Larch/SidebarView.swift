@@ -318,7 +318,8 @@ final class RootView: NSView {
         addSubview(palette)
         resizeHandle.onDrag = { [weak self] x in
             guard let self else { return }
-            self.sidebarWidth = min(max(x, Theme.sidebarWidthRange.lowerBound), Theme.sidebarWidthRange.upperBound)
+            // 取整數點：卡片落在像素中間會讓 WKWebView 內容被插值而變糊
+            self.sidebarWidth = min(max(x.rounded(), Theme.sidebarWidthRange.lowerBound), Theme.sidebarWidthRange.upperBound)
         }
         resizeHandle.onDragEnd = { [weak self] in
             guard let self else { return }
@@ -345,7 +346,9 @@ final class RootView: NSView {
     func cardFrame(sidebarWidth sw: CGFloat) -> NSRect {
         let m = Theme.margin
         let x = sw == 0 ? m : sw
-        return NSRect(x: x, y: m, width: max(0, bounds.width - x - m), height: max(0, bounds.height - 2 * m))
+        let rect = NSRect(x: x, y: m, width: max(0, bounds.width - x - m), height: max(0, bounds.height - 2 * m))
+        // 對齊實體像素，避免視窗寬高帶小數時網頁卡片模糊
+        return backingAlignedRect(rect, options: .alignAllEdgesNearest)
     }
 }
 
