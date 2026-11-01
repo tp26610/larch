@@ -12,7 +12,7 @@ struct Preferences {
         nonmutating set { defaults.set(newValue, forKey: "openExternalInLittle") }
     }
 
-    /// 沒有 Tab 時按 ⌘W 是否跳出「Quit Larch?」確認；選「Quit, and don't ask again」後為 false。
+    /// ⌘Q 與沒有 Tab 時按 ⌘W 是否跳出「Quit Larch?」確認；選「Quit, and don't ask again」後為 false。
     var confirmQuitOnEmpty: Bool {
         get { defaults.object(forKey: "confirmQuitOnEmpty") as? Bool ?? true }
         nonmutating set { defaults.set(newValue, forKey: "confirmQuitOnEmpty") }

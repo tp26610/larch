@@ -68,6 +68,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     // MARK: 選單（快捷鍵全部走選單，避免與網頁內容搶按鍵）
 
     @objc func newTab() { controller.showPalette() }
+    @objc func quitApp() { controller.requestQuit() }
     @objc func closeTab() { controller.closeCurrentTab() }
     @objc func duplicateTab() { controller.duplicateTab() }
     @objc func copyURLAsMarkdown() { controller.copyURLAsMarkdown() }
@@ -138,7 +139,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             item("Make Default Browser…", #selector(makeDefaultBrowser), target: me),
             .separator(),
             item("Hide Larch", #selector(NSApplication.hide(_:)), "h"),
-            item("Quit Larch", #selector(NSApplication.terminate(_:)), "q"),
+            item("Quit Larch", #selector(quitApp), "q", target: me),
         ])
         add("File", [
             item("New Tab", #selector(newTab), "t", target: me),

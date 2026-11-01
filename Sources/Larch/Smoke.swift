@@ -263,6 +263,11 @@ enum Smoke {
         check("不再詢問：退出並記下偏好", quits == 3 && !c.prefs.confirmQuitOnEmpty)
         _ = press("w", [.command], in: c.window)
         check("不再詢問後 ⌘W 直接退出", quits == 4 && !c.root.quitConfirm.isOpen)
+        c.prefs.confirmQuitOnEmpty = true
+        tm.newTab()
+        check("有 Tab 時 ⌘Q 也跳出確認、不退出", press("q", [.command], in: c.window) && c.root.quitConfirm.isOpen && quits == 4)
+        c.root.quitConfirm.cancel()
+        tm.close(tm.tabs[0])
         c.prefs.confirmQuitOnEmpty = hadConfirm
         BrowserWindowController.quitApp = { NSApp.terminate(nil) }
         tm.newTab() // 後面的檢查假設永遠有一個 Tab

@@ -657,9 +657,15 @@ final class BrowserWindowController: NSObject, NSTextFieldDelegate, NSWindowDele
         // 輔助視窗（Little、History、Task Manager…）為 key window 時，⌘W 只關它本身，絕不動主視窗的 Tab。
         if let aux = keyAuxiliary { aux.close(); return }
         if let tab = tabs.activeTab { tabs.close(tab); return }
-        // 沒有 Tab（空畫面）：仿 Arc，⌘W 問是否退出；已選「不再詢問」就直接退出。
-        if root.quitConfirm.isOpen { root.quitConfirm.quit(); return } // 再按一次 ⌘W 視同確認
+        // 沒有 Tab（空畫面）：仿 Arc，⌘W 問是否退出。
+        requestQuit()
+    }
+
+    /// ⌘Q 與空畫面 ⌘W：跳出「Quit Larch?」確認；已選「不再詢問」就直接退出；確認層已開著再要求一次視同確認。
+    @objc func requestQuit() {
+        if root.quitConfirm.isOpen { root.quitConfirm.quit(); return }
         guard prefs.confirmQuitOnEmpty else { Self.quitApp(); return }
+        if !window.isKeyWindow { window.makeKeyAndOrderFront(nil) }
         let returnFocus = window.firstResponder
         root.quitConfirm.onQuit = { Self.quitApp() }
         root.quitConfirm.onQuitAndNeverAsk = { [weak self] in self?.prefs.confirmQuitOnEmpty = false; Self.quitApp() }
