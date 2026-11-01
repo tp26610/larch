@@ -281,6 +281,7 @@ final class RootView: NSView {
     let card = CardView()
     let findBar = FindBar()
     let palette = CommandPaletteView()
+    let quitConfirm = QuitConfirmView()
     private let resizeHandle = SidebarResizeHandle()
     var sidebarWidth: CGFloat = Theme.sidebarWidth { didSet { needsLayout = true } }
     /// 拖曳放開後回報最終寬度；給 controller 存進 Preferences。
@@ -316,6 +317,7 @@ final class RootView: NSView {
         addSubview(resizeHandle)
         addSubview(findBar)
         addSubview(palette)
+        addSubview(quitConfirm)
         resizeHandle.onDrag = { [weak self] x in
             guard let self else { return }
             // 取整數點：卡片落在像素中間會讓 WKWebView 內容被插值而變糊
@@ -339,6 +341,7 @@ final class RootView: NSView {
         resizeHandle.isHidden = !sidebarVisible
         resizeHandle.frame = NSRect(x: sw - 3, y: 0, width: 6, height: bounds.height)
         palette.frame = bounds
+        quitConfirm.frame = bounds
         palette.anchorFrame = card.frame
         findBar.frame = NSRect(x: card.frame.maxX - 340 - 12, y: card.frame.maxY - 36 - 12, width: 340, height: 36)
     }

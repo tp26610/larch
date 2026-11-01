@@ -656,8 +656,19 @@ final class BrowserWindowController: NSObject, NSTextFieldDelegate, NSWindowDele
     @objc func closeCurrentTab() {
         // 輔助視窗（Little、History、Task Manager…）為 key window 時，⌘W 只關它本身，絕不動主視窗的 Tab。
         if let aux = keyAuxiliary { aux.close(); return }
-        if let tab = tabs.activeTab { tabs.close(tab) }
+        if let tab = tabs.activeTab { tabs.close(tab); return }
+        // 沒有 Tab（空畫面）：仿 Arc，⌘W 問是否退出；已選「不再詢問」就直接退出。
+        if root.quitConfirm.isOpen { root.quitConfirm.quit(); return } // 再按一次 ⌘W 視同確認
+        guard prefs.confirmQuitOnEmpty else { Self.quitApp(); return }
+        let returnFocus = window.firstResponder
+        root.quitConfirm.onQuit = { Self.quitApp() }
+        root.quitConfirm.onQuitAndNeverAsk = { [weak self] in self?.prefs.confirmQuitOnEmpty = false; Self.quitApp() }
+        root.quitConfirm.onCancel = { [weak self] in self?.window.makeFirstResponder(returnFocus) }
+        root.quitConfirm.present()
     }
+
+    /// 退出 app；測試可替換，避免真的結束 smoke 程序。
+    static var quitApp: @MainActor () -> Void = { NSApp.terminate(nil) }
 
     /// 所有獨立於主視窗的輔助視窗。新增獨立視窗時加在這裡（並實作 `AuxiliaryWindow`）。
     var auxiliaryWindows: [any AuxiliaryWindow] {

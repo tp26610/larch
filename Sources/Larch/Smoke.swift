@@ -101,10 +101,10 @@ enum Smoke {
         return cond()
     }
 
-    static func keyEvent(_ chars: String, _ mods: NSEvent.ModifierFlags, in window: NSWindow) -> NSEvent {
+    static func keyEvent(_ chars: String, _ mods: NSEvent.ModifierFlags, in window: NSWindow, code: UInt16 = 0) -> NSEvent {
         NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: mods, timestamp: 0, windowNumber: window.windowNumber,
                          context: nil, characters: mods.contains(.shift) ? chars.uppercased() : chars, charactersIgnoringModifiers: mods.contains(.shift) ? chars.uppercased() : chars,
-                         isARepeat: false, keyCode: 0)!
+                         isARepeat: false, keyCode: code)!
     }
 
     /// 走真實選單的快捷鍵比對（與按鍵實際路徑一致）。
@@ -242,6 +242,29 @@ enum Smoke {
         c.submitAddress(server.url("/a").absoluteString)
         check("空畫面時從網址列輸入會開新 Tab 載入", tm.tabs.count == 1 && tm.activeTab != nil)
         tm.close(tm.tabs[0])
+
+        print("空畫面 ⌘W 退出確認")
+        var quits = 0
+        BrowserWindowController.quitApp = { quits += 1 }
+        let hadConfirm = c.prefs.confirmQuitOnEmpty
+        c.prefs.confirmQuitOnEmpty = true
+        check("空畫面 ⌘W 跳出確認、不退出", press("w", [.command], in: c.window) && c.root.quitConfirm.isOpen && quits == 0)
+        check("確認層蓋住整個視窗並接管焦點", c.window.firstResponder === c.root.quitConfirm && c.root.quitConfirm.frame == c.root.bounds)
+        c.root.quitConfirm.keyDown(with: keyEvent("\u{1b}", [], in: c.window, code: 53))
+        check("Esc 取消、不退出", !c.root.quitConfirm.isOpen && quits == 0)
+        _ = press("w", [.command], in: c.window)
+        c.root.quitConfirm.keyDown(with: keyEvent("\r", [], in: c.window, code: 36))
+        check("Enter 退出", !c.root.quitConfirm.isOpen && quits == 1)
+        _ = press("w", [.command], in: c.window)
+        _ = press("w", [.command], in: c.window)
+        check("再按 ⌘W 視同退出", quits == 2)
+        _ = press("w", [.command], in: c.window)
+        c.root.quitConfirm.neverAsk()
+        check("不再詢問：退出並記下偏好", quits == 3 && !c.prefs.confirmQuitOnEmpty)
+        _ = press("w", [.command], in: c.window)
+        check("不再詢問後 ⌘W 直接退出", quits == 4 && !c.root.quitConfirm.isOpen)
+        c.prefs.confirmQuitOnEmpty = hadConfirm
+        BrowserWindowController.quitApp = { NSApp.terminate(nil) }
         tm.newTab() // 後面的檢查假設永遠有一個 Tab
 
         print("改名")
