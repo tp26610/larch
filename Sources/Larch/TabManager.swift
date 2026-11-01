@@ -109,10 +109,17 @@ final class TabManager {
         onActiveChange?()
     }
 
+    /// 側邊欄由上到下的 Tab 順序：釘選樹（略過收合與灰色未開啟的節點）→ 一般 Tab。
+    var sidebarOrderedTabs: [Tab] {
+        let pinned = pins.visible().compactMap { $0.node.isFolder ? nil : liveTab(forPin: $0.node.id) }
+        return pinned + tabs.filter { $0.pinID == nil }
+    }
+
     /// 依側邊欄清單順序切到上一個／下一個 Tab（首尾相接）。
     func selectAdjacent(offset: Int) {
-        guard tabs.count > 1, let active = activeTab, let i = tabs.firstIndex(where: { $0 === active }) else { return }
-        select(tabs[(i + offset + tabs.count) % tabs.count])
+        let order = sidebarOrderedTabs
+        guard order.count > 1, let active = activeTab, let i = order.firstIndex(where: { $0 === active }) else { return }
+        select(order[(i + offset + order.count) % order.count])
     }
 
     func close(_ tab: Tab) {

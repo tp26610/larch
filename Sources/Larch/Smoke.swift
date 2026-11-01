@@ -1220,6 +1220,15 @@ extension Smoke {
         let reopened = tm.activeTab
         check("點灰色列：重新開啟並綁定、成為目前 Tab", reopened?.pinID == node.id && reopened?.displayURL == server.url("/a"))
         check("重新開啟後載入", await wait { reopened?.pageTitle == "Page A" })
+        // ⌘⇧] / ⌘⇧[ 依側邊欄順序（釘選在前），不是 tabs 陣列順序
+        let firstPlain = tm.tabs.first { $0.pinID == nil }
+        if let reopened, let firstPlain {
+            check("側邊欄順序：釘選 Tab 排在一般 Tab 之前", tm.sidebarOrderedTabs.first === reopened)
+            tm.selectAdjacent(offset: 1)
+            check("釘選 Tab 按下一個：切到側邊欄下方的第一個一般 Tab", tm.activeTab === firstPlain)
+            tm.selectAdjacent(offset: -1)
+            check("按上一個：回到釘選 Tab", tm.activeTab === reopened)
+        }
         // session 還原後仍綁定
         c.flushPersistence()
         let snap = SessionStore.load(sto)
