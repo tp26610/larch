@@ -44,12 +44,7 @@ final class QuitConfirmView: NSView {
     required init?(coder: NSCoder) { fatalError() }
 
     private static func makeButton(_ title: String, hint: String? = nil, primary: Bool = false) -> NSButton {
-        let b = NSButton(title: hint.map { "\(title)  \($0)" } ?? title, target: nil, action: nil)
-        b.bezelStyle = .rounded
-        b.controlSize = .large
-        b.font = .systemFont(ofSize: 13)
-        if primary { b.bezelColor = NSColor(srgbRed: 0x2B / 255, green: 0x1F / 255, blue: 0xF0 / 255, alpha: 1); b.contentTintColor = .white }
-        return b
+        HintButton(title: title, hint: hint, primary: primary)
     }
 
     func present() {
@@ -78,7 +73,6 @@ final class QuitConfirmView: NSView {
         var right = w - 40
         for b in [quitButton, cancelButton, neverAskButton] {
             b.sizeToFit()
-            b.frame.size.width += 12
             b.frame.origin = NSPoint(x: right - b.frame.width, y: 36)
             right = b.frame.minX - 10
         }
@@ -102,5 +96,61 @@ final class QuitConfirmView: NSView {
         guard isOpen else { return false }
         if event.modifierFlags.intersection(.deviceIndependentFlagsMask) == .command, event.charactersIgnoringModifiers == "w" { quit() }
         return true // 開著時吞掉其他快捷鍵，避免動到後面的視窗
+    }
+}
+
+/// 自繪按鈕：標題 + 右側鍵帽樣式的快捷鍵提示（如 ESC、⏎），讓提示一眼看得出是按鍵。
+@MainActor
+private final class HintButton: NSButton {
+    private let label = NSTextField(labelWithString: "")
+    private let badge = NSView()
+    private let badgeLabel = NSTextField(labelWithString: "")
+    private let hasHint: Bool
+
+    init(title: String, hint: String?, primary: Bool) {
+        hasHint = hint != nil
+        super.init(frame: .zero)
+        self.title = ""
+        isBordered = false
+        wantsLayer = true
+        layer?.cornerRadius = 10
+        let fg: NSColor = primary ? .white : Theme.paletteText
+        layer?.backgroundColor = (primary ? NSColor(srgbRed: 0x2B / 255, green: 0x1F / 255, blue: 0xF0 / 255, alpha: 1)
+                                          : NSColor(white: 0, alpha: 0.07)).cgColor
+        label.stringValue = title
+        label.font = .systemFont(ofSize: 13)
+        label.textColor = fg
+        addSubview(label)
+        if let hint {
+            badge.wantsLayer = true
+            badge.layer?.cornerRadius = 5
+            badge.layer?.backgroundColor = (primary ? NSColor(white: 1, alpha: 0.22) : NSColor(white: 0, alpha: 0.10)).cgColor
+            badgeLabel.stringValue = hint
+            badgeLabel.font = .systemFont(ofSize: 11, weight: .semibold)
+            badgeLabel.textColor = primary ? .white : Theme.paletteMuted
+            badge.addSubview(badgeLabel)
+            addSubview(badge)
+        }
+    }
+
+    required init?(coder: NSCoder) { fatalError() }
+
+    override func hitTest(_ point: NSPoint) -> NSView? { frame.contains(point) ? self : nil }
+
+    override func sizeToFit() {
+        label.sizeToFit(); badgeLabel.sizeToFit()
+        var w = label.frame.width + 28
+        if hasHint { w += max(badgeLabel.frame.width + 12, 26) + 8 }
+        frame.size = NSSize(width: w, height: 34)
+        needsLayout = true
+    }
+
+    override func layout() {
+        super.layout()
+        label.frame.origin = NSPoint(x: 14, y: (bounds.height - label.frame.height) / 2)
+        guard hasHint else { return }
+        let bw = max(badgeLabel.frame.width + 12, 26), bh: CGFloat = 20
+        badge.frame = NSRect(x: bounds.width - 10 - bw, y: (bounds.height - bh) / 2, width: bw, height: bh)
+        badgeLabel.frame.origin = NSPoint(x: (bw - badgeLabel.frame.width) / 2, y: (bh - badgeLabel.frame.height) / 2)
     }
 }
