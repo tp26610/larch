@@ -167,9 +167,10 @@ final class Tab: NSObject, WKNavigationDelegate, WKUIDelegate {
             return
         }
         // 桌面 App 登入交接（如 Slack / Timeless 登入完成後導向 slack:// 等）：導覽本身一律取消、頁面不變；
-        // 僅限主框架導覽、非內建封鎖的 scheme、且系統上有 App 註冊處理它，才詢問（已允許的 scheme 直接）交給系統開啟。
+        // 非內建封鎖的 scheme、且系統上有 App 註冊處理它，才詢問（已允許的 scheme 直接）交給系統開啟。
         decisionHandler(.cancel)
-        if navigationAction.targetFrame?.isMainFrame ?? true, let url = navigationAction.request.url {
+        // 子框架也要處理：Slack 登入完成頁用隱藏 iframe 載入 slack://…/magic-login 來交接；詢問框同一時間只彈一個，避免被頁面洗版。
+        if let url = navigationAction.request.url {
             handleExternalApp(url, scheme: scheme, from: webView.url?.host ?? "")
         }
     }
@@ -224,6 +225,7 @@ final class Tab: NSObject, WKNavigationDelegate, WKUIDelegate {
 
     /// 已允許的 scheme 存在偏好；測試可替換。
     static var externalPrefs = Preferences()
+    private static var externalPromptActive = false
 
     private func handleExternalApp(_ url: URL, scheme: String, from host: String) {
         guard !Self.blockedExternalSchemes.contains(scheme), let appName = Self.externalAppResolver(url) else { return }
@@ -232,8 +234,11 @@ final class Tab: NSObject, WKNavigationDelegate, WKUIDelegate {
             return
         }
         // 提示是模態的；放到下一輪 runloop，不卡在導覽決策裡。
+        guard !Self.externalPromptActive else { return }
+        Self.externalPromptActive = true
         DispatchQueue.main.async {
             MainActor.assumeIsolated {
+                defer { Self.externalPromptActive = false }
                 switch Tab.externalAppPrompt(ExternalAppRequest(scheme: scheme, appName: appName, pageHost: host)) {
                 case .cancel: break
                 case .openOnce: Tab.externalAppOpener(url)
