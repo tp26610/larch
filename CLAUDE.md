@@ -120,5 +120,8 @@ Smoke.swift                      FixtureServer（本機假網站）+ smoke 檢�
 - Brian 已日常使用 Larch（2026-10-30 確認），以下皆已在真實使用中驗證、手感正常：實際設為預設瀏覽器、外部連結走 Little 的實際流程、Option+點連結與 Little 視窗操作（拖曳/雙擊/縮放）、視窗操作（拖曳視窗、雙擊 bar 放大還原、側邊欄收合時紅綠燈淡入淡出、進出全螢幕）、HTTP 驗證對話框、History 視窗真實捲動/hover 刪除、Task Manager 1 秒刷新手感。
 - 尚未驗證、Brian 評估不急：下載、真實鍵盤 ⌘= 放大、全螢幕影片（2026-10-30 決定暫不優先驗證）。
 
+## 工作流程
+驗證 UI 改動、除錯網頁行為、PoC、BACKLOG 估點、發版流程見 `docs/workflow.md`；遇到對應情境再看。
+
 ## Backlog
 見 `BACKLOG.md`；開工前先讀，完成後移到「已完成」。
