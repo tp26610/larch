@@ -112,9 +112,6 @@ final class Tab: NSObject, WKNavigationDelegate, WKUIDelegate {
         webView.load(URLRequest(url: url))
     }
 
-    /// 允許交給系統開啟桌面 App 的自訂 scheme（登入交接用）。新增前要確認不會被網頁濫用成任意外部動作。
-    static let externalAppSchemes: Set<String> = ["slack"]
-
     /// 使用者明確用「開啟檔案」交給瀏覽器的本機 HTML；只放行這一個檔案的導覽。
     private var allowedFileURL: URL?
 
@@ -165,17 +162,82 @@ final class Tab: NSObject, WKNavigationDelegate, WKUIDelegate {
             decisionHandler(.allow)
             return
         }
-        // 桌面 App 登入交接（如 Slack 登入完成後導向 slack://）：白名單內的 scheme，
-        // 僅限主框架導覽，且系統上有 App 註冊處理它時才交給系統開啟；導覽本身仍取消，頁面不變。
-        if Self.externalAppSchemes.contains(scheme), navigationAction.targetFrame?.isMainFrame ?? true,
-           let url = navigationAction.request.url,
-           NSWorkspace.shared.urlForApplication(toOpen: url) != nil {
-            decisionHandler(.cancel)
-            NSWorkspace.shared.open(url)
+        if ["http", "https", "about", "blob"].contains(scheme) {
+            decisionHandler(.allow)
             return
         }
-        // 只放行 http(s) 與 about/blob；mailto:、file:、其他自訂 scheme 一律拒絕。
-        decisionHandler(["http", "https", "about", "blob"].contains(scheme) ? .allow : .cancel)
+        // 桌面 App 登入交接（如 Slack / Timeless 登入完成後導向 slack:// 等）：導覽本身一律取消、頁面不變；
+        // 僅限主框架導覽、非內建封鎖的 scheme、且系統上有 App 註冊處理它，才詢問（已允許的 scheme 直接）交給系統開啟。
+        decisionHandler(.cancel)
+        if navigationAction.targetFrame?.isMainFrame ?? true, let url = navigationAction.request.url {
+            handleExternalApp(url, scheme: scheme, from: webView.url?.host ?? "")
+        }
+    }
+
+    // MARK: 外部 App 交接（自訂 scheme）
+
+    /// 永遠不交給外部 App 的 scheme（包含 mailto：維持原本一律拒絕）。
+    static let blockedExternalSchemes: Set<String> = [
+        "file", "javascript", "data", "vbscript", "ftp", "mailto", "view-source", "ws", "wss", "about", "blob", "http", "https",
+    ]
+
+    struct ExternalAppRequest {
+        let scheme: String
+        let appName: String
+        let pageHost: String
+    }
+
+    enum ExternalAppChoice { case cancel, openOnce, alwaysOpen }
+
+    /// 詢問是否開啟外部 App；測試可替換。
+    static var externalAppPrompt: @MainActor (ExternalAppRequest) -> ExternalAppChoice = { request in
+        let alert = NSAlert()
+        let from = request.pageHost.isEmpty ? "A web page" : request.pageHost
+        alert.messageText = "Open \(request.appName)?"
+        alert.informativeText = "\(from) wants to open \(request.appName) (\(request.scheme)://)."
+        alert.addButton(withTitle: "Open")
+        alert.addButton(withTitle: "Cancel")
+        alert.showsSuppressionButton = true
+        alert.suppressionButton?.title = "Always allow \(request.scheme):// links"
+        switch alert.runModal() {
+        case .alertFirstButtonReturn:
+            return alert.suppressionButton?.state == .on ? .alwaysOpen : .openOnce
+        default:
+            return .cancel
+        }
+    }
+
+    /// 找出處理該網址的 App 名稱；沒有 App 註冊回傳 nil。測試可替換。
+    static var externalAppResolver: (URL) -> String? = { url in
+        NSWorkspace.shared.urlForApplication(toOpen: url).map { FileManager.default.displayName(atPath: $0.path) }
+    }
+
+    /// 實際開啟；測試可替換。
+    static var externalAppOpener: (URL) -> Void = { NSWorkspace.shared.open($0) }
+
+    /// 已允許的 scheme 存在偏好；測試可替換。
+    static var externalPrefs = Preferences()
+
+    private func handleExternalApp(_ url: URL, scheme: String, from host: String) {
+        guard !Self.blockedExternalSchemes.contains(scheme), let appName = Self.externalAppResolver(url) else { return }
+        if Self.externalPrefs.allowedExternalSchemes.contains(scheme) {
+            Self.externalAppOpener(url)
+            return
+        }
+        // 提示是模態的；放到下一輪 runloop，不卡在導覽決策裡。
+        DispatchQueue.main.async {
+            MainActor.assumeIsolated {
+                switch Tab.externalAppPrompt(ExternalAppRequest(scheme: scheme, appName: appName, pageHost: host)) {
+                case .cancel: break
+                case .openOnce: Tab.externalAppOpener(url)
+                case .alwaysOpen:
+                    var set = Tab.externalPrefs.allowedExternalSchemes
+                    set.insert(scheme)
+                    Tab.externalPrefs.allowedExternalSchemes = set
+                    Tab.externalAppOpener(url)
+                }
+            }
+        }
     }
 
     func webView(_ webView: WKWebView, decidePolicyFor navigationResponse: WKNavigationResponse,

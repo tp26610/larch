@@ -18,6 +18,12 @@ struct Preferences {
         nonmutating set { defaults.set(newValue, forKey: "confirmQuitOnEmpty") }
     }
 
+    /// 使用者允許直接開啟外部 App 的自訂 scheme（如 slack）；預設只有 slack，其他第一次會詢問。
+    var allowedExternalSchemes: Set<String> {
+        get { Set((defaults.stringArray(forKey: "allowedExternalSchemes") ?? ["slack"]).map { $0.lowercased() }) }
+        nonmutating set { defaults.set(newValue.sorted(), forKey: "allowedExternalSchemes") }
+    }
+
     /// 上次調整的 Little 視窗大小。
     var littleSize: NSSize {
         get {

@@ -1869,6 +1869,50 @@ extension Smoke {
         check("⌘但不是點連結不攔截", decide(FakeNavAction(server.url("/b"), type: .reload, mods: .command)) == .allow && seenCmd.isEmpty)
         check("Option+點非 http(s) 連結不開 Little", decide(FakeNavAction(URL(string: "mailto:a@b.c")!, mods: .option)) == .cancel && seen.isEmpty && c.littles.isEmpty)
         check("⌘+點非 http(s) 連結不開背景 Tab", decide(FakeNavAction(URL(string: "mailto:a@b.c")!, mods: .command)) == .cancel && seenCmd.isEmpty && tm.tabs.count == tabsN)
+        // 外部 App 交接（自訂 scheme）：導覽一律取消；第一次詢問，「一律允許」後記住；mailto 等永不交接。
+        do {
+            let suiteX = "larch.smoke.extapp.\(ProcessInfo.processInfo.processIdentifier)"
+            let dx = UserDefaults(suiteName: suiteX)!
+            dx.removePersistentDomain(forName: suiteX)
+            let (oldPrefs, oldPrompt, oldResolver, oldOpener) = (Tab.externalPrefs, Tab.externalAppPrompt, Tab.externalAppResolver, Tab.externalAppOpener)
+            defer { Tab.externalPrefs = oldPrefs; Tab.externalAppPrompt = oldPrompt; Tab.externalAppResolver = oldResolver; Tab.externalAppOpener = oldOpener
+                    dx.removePersistentDomain(forName: suiteX) }
+            Tab.externalPrefs = Preferences(defaults: dx)
+            var asked: [Tab.ExternalAppRequest] = [], opened: [URL] = []
+            var choice: Tab.ExternalAppChoice = .cancel
+            var installed = true
+            Tab.externalAppPrompt = { asked.append($0); return choice }
+            Tab.externalAppResolver = { _ in installed ? "FakeApp" : nil }
+            Tab.externalAppOpener = { opened.append($0) }
+            let timeless = URL(string: "timeless://auth?code=1")!
+            check("預設只允許 slack", Tab.externalPrefs.allowedExternalSchemes == ["slack"])
+            check("slack:// 直接交給 App、不詢問，導覽取消", decide(FakeNavAction(URL(string: "slack://open")!, type: .other)) == .cancel && opened == [URL(string: "slack://open")!] && asked.isEmpty)
+            opened = []
+            check("未知 scheme：導覽取消並詢問，取消不開啟", decide(FakeNavAction(timeless, type: .other)) == .cancel)
+            try? await Task.sleep(nanoseconds: 100_000_000)
+            check("詢問內容含 scheme 與 App 名稱，取消後沒開", asked.count == 1 && asked[0].scheme == "timeless" && asked[0].appName == "FakeApp" && opened.isEmpty
+                  && !Tab.externalPrefs.allowedExternalSchemes.contains("timeless"))
+            choice = .openOnce
+            _ = decide(FakeNavAction(timeless, type: .other))
+            try? await Task.sleep(nanoseconds: 100_000_000)
+            check("Open（僅此次）：開啟但不記住", asked.count == 2 && opened == [timeless] && !Tab.externalPrefs.allowedExternalSchemes.contains("timeless"))
+            opened = []
+            choice = .alwaysOpen
+            _ = decide(FakeNavAction(timeless, type: .other))
+            try? await Task.sleep(nanoseconds: 100_000_000)
+            check("一律允許：開啟並記住", asked.count == 3 && opened == [timeless] && Tab.externalPrefs.allowedExternalSchemes.contains("timeless"))
+            opened = []
+            check("記住後不再詢問，直接開啟", decide(FakeNavAction(timeless, type: .other)) == .cancel && opened == [timeless] && asked.count == 3)
+            opened = []
+            installed = false
+            check("系統沒有 App 註冊：不詢問、不開啟", decide(FakeNavAction(URL(string: "nothere://x")!, type: .other)) == .cancel && asked.count == 3 && opened.isEmpty)
+            installed = true
+            for blocked in ["mailto:a@b.c", "javascript:alert(1)", "data:text/html,hi", "file:///etc/hosts", "ftp://x/y"] {
+                _ = decide(FakeNavAction(URL(string: blocked)!, type: .other))
+            }
+            try? await Task.sleep(nanoseconds: 100_000_000)
+            check("mailto / javascript / data / file / ftp 永不交接", asked.count == 3 && opened.isEmpty)
+        }
         // 真實 WebKit：把帶 Option 的真實滑鼠事件送進 WKWebView（在連結座標按下/放開）。
         tm.select(page)
         c.window.makeKeyAndOrderFront(nil)
