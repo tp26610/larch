@@ -192,13 +192,16 @@ final class Tab: NSObject, WKNavigationDelegate, WKUIDelegate {
     /// 詢問是否開啟外部 App；測試可替換。
     static var externalAppPrompt: @MainActor (ExternalAppRequest) -> ExternalAppChoice = { request in
         let alert = NSAlert()
-        let from = request.pageHost.isEmpty ? "A web page" : request.pageHost
         alert.messageText = "Open \(request.appName)?"
-        alert.informativeText = "\(from) wants to open \(request.appName) (\(request.scheme)://)."
-        alert.addButton(withTitle: "Open")
+        alert.informativeText = request.pageHost.isEmpty
+            ? "A web page wants to open this application."
+            : "https://\(request.pageHost) wants to open this application."
+        alert.addButton(withTitle: "Open \(request.appName)")
         alert.addButton(withTitle: "Cancel")
-        alert.showsSuppressionButton = true
-        alert.suppressionButton?.title = "Always allow \(request.scheme):// links"
+        if !request.pageHost.isEmpty { // 沒有網站名稱就無法按網站記住
+            alert.showsSuppressionButton = true
+            alert.suppressionButton?.title = "Always allow \(request.pageHost) to open links of this type in the associated app"
+        }
         switch alert.runModal() {
         case .alertFirstButtonReturn:
             return alert.suppressionButton?.state == .on ? .alwaysOpen : .openOnce
@@ -220,7 +223,7 @@ final class Tab: NSObject, WKNavigationDelegate, WKUIDelegate {
 
     private func handleExternalApp(_ url: URL, scheme: String, from host: String) {
         guard !Self.blockedExternalSchemes.contains(scheme), let appName = Self.externalAppResolver(url) else { return }
-        if Self.externalPrefs.allowedExternalSchemes.contains(scheme) {
+        if Self.externalPrefs.isExternalAppAllowed(scheme: scheme, host: host) {
             Self.externalAppOpener(url)
             return
         }
@@ -231,9 +234,7 @@ final class Tab: NSObject, WKNavigationDelegate, WKUIDelegate {
                 case .cancel: break
                 case .openOnce: Tab.externalAppOpener(url)
                 case .alwaysOpen:
-                    var set = Tab.externalPrefs.allowedExternalSchemes
-                    set.insert(scheme)
-                    Tab.externalPrefs.allowedExternalSchemes = set
+                    Tab.externalPrefs.allowExternalApp(scheme: scheme, host: host)
                     Tab.externalAppOpener(url)
                 }
             }

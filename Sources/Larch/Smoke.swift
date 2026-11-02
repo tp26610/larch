@@ -1885,24 +1885,27 @@ extension Smoke {
             Tab.externalAppResolver = { _ in installed ? "FakeApp" : nil }
             Tab.externalAppOpener = { opened.append($0) }
             let timeless = URL(string: "timeless://auth?code=1")!
-            check("預設只允許 slack", Tab.externalPrefs.allowedExternalSchemes == ["slack"])
-            check("slack:// 直接交給 App、不詢問，導覽取消", decide(FakeNavAction(URL(string: "slack://open")!, type: .other)) == .cancel && opened == [URL(string: "slack://open")!] && asked.isEmpty)
-            opened = []
-            check("未知 scheme：導覽取消並詢問，取消不開啟", decide(FakeNavAction(timeless, type: .other)) == .cancel)
+            let pageHost = page.webView.url?.host ?? ""
+            let slack = URL(string: "slack://open")!
+            check("只有 slack.com 與子網域預設可開 slack://",
+                  Tab.externalPrefs.isExternalAppAllowed(scheme: "slack", host: "slack.com") && Tab.externalPrefs.isExternalAppAllowed(scheme: "slack", host: "app.slack.com")
+                  && !Tab.externalPrefs.isExternalAppAllowed(scheme: "slack", host: "evilslack.com") && !Tab.externalPrefs.isExternalAppAllowed(scheme: "timeless", host: "slack.com"))
+            check("非允許網站的 slack:// 也要詢問，導覽取消", decide(FakeNavAction(slack, type: .other)) == .cancel)
             try? await Task.sleep(nanoseconds: 100_000_000)
-            check("詢問內容含 scheme 與 App 名稱，取消後沒開", asked.count == 1 && asked[0].scheme == "timeless" && asked[0].appName == "FakeApp" && opened.isEmpty
-                  && !Tab.externalPrefs.allowedExternalSchemes.contains("timeless"))
+            check("詢問內容含 scheme、App 名稱與來源網站，取消後沒開", asked.count == 1 && asked[0].scheme == "slack" && asked[0].appName == "FakeApp" && asked[0].pageHost == pageHost
+                  && opened.isEmpty && Tab.externalPrefs.allowedExternalApps.isEmpty)
             choice = .openOnce
             _ = decide(FakeNavAction(timeless, type: .other))
             try? await Task.sleep(nanoseconds: 100_000_000)
-            check("Open（僅此次）：開啟但不記住", asked.count == 2 && opened == [timeless] && !Tab.externalPrefs.allowedExternalSchemes.contains("timeless"))
+            check("Open（僅此次）：開啟但不記住", asked.count == 2 && opened == [timeless] && Tab.externalPrefs.allowedExternalApps.isEmpty)
             opened = []
             choice = .alwaysOpen
             _ = decide(FakeNavAction(timeless, type: .other))
             try? await Task.sleep(nanoseconds: 100_000_000)
-            check("一律允許：開啟並記住", asked.count == 3 && opened == [timeless] && Tab.externalPrefs.allowedExternalSchemes.contains("timeless"))
+            check("一律允許：開啟並按網站+scheme 記住", asked.count == 3 && opened == [timeless] && Tab.externalPrefs.isExternalAppAllowed(scheme: "timeless", host: pageHost)
+                  && !Tab.externalPrefs.isExternalAppAllowed(scheme: "timeless", host: "other.example") && !Tab.externalPrefs.isExternalAppAllowed(scheme: "zoommtg", host: pageHost))
             opened = []
-            check("記住後不再詢問，直接開啟", decide(FakeNavAction(timeless, type: .other)) == .cancel && opened == [timeless] && asked.count == 3)
+            check("記住後同網站不再詢問，直接開啟", decide(FakeNavAction(timeless, type: .other)) == .cancel && opened == [timeless] && asked.count == 3)
             opened = []
             installed = false
             check("系統沒有 App 註冊：不詢問、不開啟", decide(FakeNavAction(URL(string: "nothere://x")!, type: .other)) == .cancel && asked.count == 3 && opened.isEmpty)

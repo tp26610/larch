@@ -18,10 +18,22 @@ struct Preferences {
         nonmutating set { defaults.set(newValue, forKey: "confirmQuitOnEmpty") }
     }
 
-    /// 使用者允許直接開啟外部 App 的自訂 scheme（如 slack）；預設只有 slack，其他第一次會詢問。
-    var allowedExternalSchemes: Set<String> {
-        get { Set((defaults.stringArray(forKey: "allowedExternalSchemes") ?? ["slack"]).map { $0.lowercased() }) }
-        nonmutating set { defaults.set(newValue.sorted(), forKey: "allowedExternalSchemes") }
+    /// 使用者允許「某網站直接開啟某 scheme 的外部 App」的記錄，格式 `scheme|host`（仿 Chrome：按網站記，不是全域）。
+    var allowedExternalApps: Set<String> {
+        get { Set(defaults.stringArray(forKey: "allowedExternalApps") ?? []) }
+        nonmutating set { defaults.set(newValue.sorted(), forKey: "allowedExternalApps") }
+    }
+
+    /// slack.com 與其子網域預設可開 slack://（桌面 App 登入交接）；其餘看使用者記錄。
+    func isExternalAppAllowed(scheme: String, host: String) -> Bool {
+        let h = host.lowercased(), s = scheme.lowercased()
+        if s == "slack", h == "slack.com" || h.hasSuffix(".slack.com") { return true }
+        return !h.isEmpty && allowedExternalApps.contains("\(s)|\(h)")
+    }
+
+    func allowExternalApp(scheme: String, host: String) {
+        guard !host.isEmpty else { return }
+        allowedExternalApps.insert("\(scheme.lowercased())|\(host.lowercased())")
     }
 
     /// 上次調整的 Little 視窗大小。
