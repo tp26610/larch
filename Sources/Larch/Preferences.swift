@@ -24,10 +24,9 @@ struct Preferences {
         nonmutating set { defaults.set(newValue.sorted(), forKey: "allowedExternalApps") }
     }
 
-    /// slack.com 與其子網域預設可開 slack://（桌面 App 登入交接）；其餘看使用者記錄。
+    /// 只有使用者按過「Always allow」的網站 + scheme 才直接開啟；其餘一律先詢問（仿 Chrome）。
     func isExternalAppAllowed(scheme: String, host: String) -> Bool {
         let h = host.lowercased(), s = scheme.lowercased()
-        if s == "slack", h == "slack.com" || h.hasSuffix(".slack.com") { return true }
         return !h.isEmpty && allowedExternalApps.contains("\(s)|\(h)")
     }
 

@@ -216,7 +216,11 @@ final class Tab: NSObject, WKNavigationDelegate, WKUIDelegate {
     }
 
     /// 實際開啟；測試可替換。
-    static var externalAppOpener: (URL) -> Void = { NSWorkspace.shared.open($0) }
+    static var externalAppOpener: (URL) -> Void = { url in
+        let config = NSWorkspace.OpenConfiguration()
+        config.activates = true
+        NSWorkspace.shared.open(url, configuration: config)
+    }
 
     /// 已允許的 scheme 存在偏好；測試可替換。
     static var externalPrefs = Preferences()

@@ -1912,9 +1912,8 @@ extension Smoke {
             let timeless = URL(string: "timeless://auth?code=1")!
             let pageHost = page.webView.url?.host ?? ""
             let slack = URL(string: "slack://open")!
-            check("只有 slack.com 與子網域預設可開 slack://",
-                  Tab.externalPrefs.isExternalAppAllowed(scheme: "slack", host: "slack.com") && Tab.externalPrefs.isExternalAppAllowed(scheme: "slack", host: "app.slack.com")
-                  && !Tab.externalPrefs.isExternalAppAllowed(scheme: "slack", host: "evilslack.com") && !Tab.externalPrefs.isExternalAppAllowed(scheme: "timeless", host: "slack.com"))
+            check("沒有任何網站預設可直接開 App（含 slack.com），都要先詢問",
+                  !Tab.externalPrefs.isExternalAppAllowed(scheme: "slack", host: "slack.com") && !Tab.externalPrefs.isExternalAppAllowed(scheme: "slack", host: "app.slack.com"))
             check("非允許網站的 slack:// 也要詢問，導覽取消", decide(FakeNavAction(slack, type: .other)) == .cancel)
             try? await Task.sleep(nanoseconds: 100_000_000)
             check("詢問內容含 scheme、App 名稱與來源網站，取消後沒開", asked.count == 1 && asked[0].scheme == "slack" && asked[0].appName == "FakeApp" && asked[0].pageHost == pageHost
