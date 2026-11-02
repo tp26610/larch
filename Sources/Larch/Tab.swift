@@ -112,6 +112,9 @@ final class Tab: NSObject, WKNavigationDelegate, WKUIDelegate {
         webView.load(URLRequest(url: url))
     }
 
+    /// 允許交給系統開啟桌面 App 的自訂 scheme（登入交接用）。新增前要確認不會被網頁濫用成任意外部動作。
+    static let externalAppSchemes: Set<String> = ["slack"]
+
     /// 使用者明確用「開啟檔案」交給瀏覽器的本機 HTML；只放行這一個檔案的導覽。
     private var allowedFileURL: URL?
 
@@ -162,7 +165,16 @@ final class Tab: NSObject, WKNavigationDelegate, WKUIDelegate {
             decisionHandler(.allow)
             return
         }
-        // 只放行 http(s) 與 about/blob；mailto:、file:、自訂 scheme 一律拒絕。
+        // 桌面 App 登入交接（如 Slack 登入完成後導向 slack://）：白名單內的 scheme，
+        // 僅限主框架導覽，且系統上有 App 註冊處理它時才交給系統開啟；導覽本身仍取消，頁面不變。
+        if Self.externalAppSchemes.contains(scheme), navigationAction.targetFrame?.isMainFrame ?? true,
+           let url = navigationAction.request.url,
+           NSWorkspace.shared.urlForApplication(toOpen: url) != nil {
+            decisionHandler(.cancel)
+            NSWorkspace.shared.open(url)
+            return
+        }
+        // 只放行 http(s) 與 about/blob；mailto:、file:、其他自訂 scheme 一律拒絕。
         decisionHandler(["http", "https", "about", "blob"].contains(scheme) ? .allow : .cancel)
     }
 
