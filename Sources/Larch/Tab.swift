@@ -291,6 +291,11 @@ final class Tab: NSObject, WKNavigationDelegate, WKUIDelegate {
     func webView(_ webView: WKWebView, createWebViewWith configuration: WKWebViewConfiguration,
                  for navigationAction: WKNavigationAction, windowFeatures: WKWindowFeatures) -> WKWebView? {
         let url = navigationAction.request.url
+        // target=_blank 的自訂 scheme 連結（如 Slack 「Open Slack」按鈕）：不開視窗，改走外部 App 交接。
+        if let url, let scheme = url.scheme?.lowercased(), !["http", "https", "about"].contains(scheme) {
+            handleExternalApp(url, scheme: scheme, from: webView.url?.host ?? "")
+            return nil
+        }
         guard url == nil || InputNormalizer.isHTTP(url) || url?.scheme == "about" else { return nil }
         if popupInPlace {
             if let url, InputNormalizer.isHTTP(url) { load(url) }

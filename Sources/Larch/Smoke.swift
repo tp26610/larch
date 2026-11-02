@@ -1940,6 +1940,11 @@ extension Smoke {
             }
             try? await Task.sleep(nanoseconds: 100_000_000)
             check("mailto / javascript / data / file / ftp 永不交接", asked.count == 3 && opened.isEmpty)
+            // target=_blank / window.open 的自訂 scheme（Slack 「Open Slack」）：不開視窗，走交接
+            let tabsPopup = tm.tabs.count
+            let popped = page.webView(page.webView, createWebViewWith: WKWebViewConfiguration(), for: FakeNavAction(timeless, type: .linkActivated), windowFeatures: WKWindowFeatures())
+            try? await Task.sleep(nanoseconds: 100_000_000)
+            check("target=_blank 的自訂 scheme 連結走外部 App 交接、不開新 Tab", popped == nil && opened == [timeless] && tm.tabs.count == tabsPopup)
         }
         // 真實 WebKit：把帶 Option 的真實滑鼠事件送進 WKWebView（在連結座標按下/放開）。
         tm.select(page)
