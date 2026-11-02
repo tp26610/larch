@@ -1020,8 +1020,10 @@ extension Smoke {
         w.makeFirstResponder(cur.webView)
         let nBefore = tm.tabs.count
         let curURL = cur.displayURL!.absoluteString
-        check("⌘L 開啟覆蓋層並預填目前網址且全選", press("l", .command, in: w) && p.isOpen && p.field.stringValue == curURL
-              && p.field.currentEditor()?.selectedRange.length == (curURL as NSString).length && c.paletteNavigatesCurrentTab)
+        let pressed = press("l", .command, in: w)
+        check("⌘L 開啟覆蓋層並預填目前網址且全選", pressed && p.isOpen && p.field.stringValue == curURL
+              && p.field.currentEditor()?.selectedRange.length == (curURL as NSString).length && c.paletteNavigatesCurrentTab,
+              "pressed=\(pressed) open=\(p.isOpen) field=\(p.field.stringValue) cur=\(curURL) sel=\(String(describing: p.field.currentEditor()?.selectedRange)) key=\(w.isKeyWindow) active=\(NSApp.isActive) nav=\(c.paletteNavigatesCurrentTab)")
         p.field.stringValue = server.url("/b?nav").absoluteString
         p.refresh()
         _ = p.control(p.field, textView: NSTextView(), doCommandBy: #selector(NSResponder.insertNewline(_:)))
@@ -1314,6 +1316,29 @@ extension Smoke {
         check("⌘T 命令列列出灰色釘選", c2.root.palette.items.contains { if case .activatePin(let id) = $0.action { return id == g2.id } else { return false } })
         if let i = c2.root.palette.items.firstIndex(where: { $0.kind == .pin }) { c2.root.palette.pick(i) }
         check("選取灰色釘選 → 開啟並綁定", tm2.activeTab?.pinID == g2.id)
+        // ⌘+點擊多選 → 收進新資料夾
+        do {
+            let m1 = tm2.newTab(url: server.url("/a")), m2 = tm2.newTab(url: server.url("/b")), m3 = tm2.newTab(url: server.url("/c"))
+            _ = await wait { m1.pageTitle == "Page A" && m2.pageTitle == "Page B" && m3.pageTitle == "頁面 C" }
+            tm2.select(m1)
+            func cmdClick(_ t: Tab) {
+                guard let r = c2.sidebar.rowViews.first(where: { $0.tab === t }), let w = r.window else { return }
+                let p = r.convert(NSPoint(x: r.bounds.midX, y: r.bounds.midY), to: nil)
+                r.mouseDown(with: NSEvent.mouseEvent(with: .leftMouseDown, location: p, modifierFlags: .command, timestamp: 0, windowNumber: w.windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: 1)!)
+            }
+            cmdClick(m2); cmdClick(m3)
+            check("⌘+點擊多選：納入目前 Tab 與被點的列", c2.selection == [m1.id, m2.id, m3.id], "\(c2.selection.count)")
+            cmdClick(m3)
+            check("再 ⌘+點擊 → 取消選取", c2.selection == [m1.id, m2.id])
+            let folderCount = tm2.pins.roots.filter(\.isFolder).count
+            let f = c2.groupSelectionIntoFolder()
+            check("多選收進新資料夾：資料夾含兩個釘選且順序依側邊欄", f.map { tm2.pins.children(of: $0.id).map(\.url) } == [m1.displayURL?.absoluteString, m2.displayURL?.absoluteString])
+            check("多選收進新資料夾：Tab 綁定節點、選取清空", m1.pinID != nil && m2.pinID != nil && m3.pinID == nil && c2.selection.isEmpty && tm2.pins.roots.filter(\.isFolder).count == folderCount + 1)
+            if let f { c2.finishRenameForSmoke(f.id) }
+            cmdClick(m3)
+            c2.sidebar.rowViews.first { $0.tab === m3 }?.mouseDown(with: NSEvent.mouseEvent(with: .leftMouseDown, location: .zero, modifierFlags: [], timestamp: 0, windowNumber: c2.window.windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: 1)!)
+            check("一般點擊 → 清除多選", c2.selection.isEmpty)
+        }
         c2.window.close()
         try await dragGeometryChecks(server)
     }

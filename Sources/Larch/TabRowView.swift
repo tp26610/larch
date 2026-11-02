@@ -10,6 +10,8 @@ final class TabRowView: NSView, NSTextFieldDelegate, SidebarRow {
     let depth: Int
     var item: SidebarItem { pin.map { .pin($0.id) } ?? .tab(tab?.id ?? UUID()) }
     var onSelect: ((TabRowView) -> Void)?
+    /// ⌘+點擊：加入/移出多選。
+    var onToggleSelect: ((TabRowView) -> Void)?
     var onClose: ((TabRowView) -> Void)?
     var onRename: ((TabRowView, String) -> Void)?
     var onMenu: ((TabRowView) -> NSMenu?)?
@@ -34,6 +36,10 @@ final class TabRowView: NSView, NSTextFieldDelegate, SidebarRow {
     var isShowingSplitBadge: Bool { !splitBadge.isHidden }
     var titleText: String { titleLabel.stringValue }
     var isActive = false { didSet { refreshBackground() } }
+    /// 多選中（⌘+點擊）。
+    var isSelected = false { didSet { refreshBackground() } }
+    /// 多選與資料夾操作用的識別：釘選用節點 id，一般 Tab 用 Tab id。
+    var selectionID: UUID? { pin?.id ?? tab?.id }
 
     override var mouseDownCanMoveWindow: Bool { false }
 
@@ -167,7 +173,7 @@ final class TabRowView: NSView, NSTextFieldDelegate, SidebarRow {
     }
 
     private func refreshBackground() {
-        layer?.backgroundColor = (isActive ? Theme.active : hovering ? Theme.hover : NSColor.clear).cgColor
+        layer?.backgroundColor = (isActive || isSelected ? Theme.active : hovering ? Theme.hover : NSColor.clear).cgColor
         closeButton.alphaValue = (isActive || hovering) ? 0.8 : 0
         // 釘選列：第一下關閉 Tab（保留釘選），變灰後第二下才移除釘選（仿 Arc）。
         let keepPinned = pin != nil && tab != nil
@@ -182,7 +188,9 @@ final class TabRowView: NSView, NSTextFieldDelegate, SidebarRow {
 
     override func mouseDown(with event: NSEvent) {
         downPoint = event.locationInWindow
-        if event.clickCount >= 2 {
+        if event.modifierFlags.contains(.command) {
+            onToggleSelect?(self)
+        } else if event.clickCount >= 2 {
             beginRename()
         } else {
             onSelect?(self)

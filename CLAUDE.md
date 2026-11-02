@@ -110,6 +110,8 @@ Smoke.swift                      FixtureServer（本機假網站）+ smoke 檢�
 
 29. **退出確認**（仿 Arc 的「Quit Arc?」）：`QuitConfirmView`（`QuitConfirmView.swift`）是蓋在 `RootView` 最上層的覆蓋層，開啟時吞滑鼠與其他快捷鍵、接管焦點；按鈕是自繪的 `HintButton`（標題 + 鍵帽樣式的 ESC / ⏎ 提示；系統 `NSButton` 不吃 `contentTintColor` 的標題色，Quit 白字看不清楚，所以不用）。入口是 `BrowserWindowController.requestQuit()`：**⌘Q**（選單 Quit 項目 target 是 `AppDelegate.quitApp`，不再是 `NSApplication.terminate`）與**空畫面（`activeTab == nil`）時的 ⌘W** 共用；覆蓋層開著時再要求一次視同確認。Enter 退出、Esc 取消並還原焦點、「Quit, and don't ask again」寫入 `Preferences.confirmQuitOnEmpty = false` 後退出，之後 ⌘Q / 空畫面 ⌘W 直接退出（目前沒有設定頁可改回，要用 `defaults delete` 清掉）。Little / History / Task Manager 為 key window 時 ⌘W 仍只關該視窗；⌘Q 會把主視窗叫到前面再顯示。Dock 右鍵退出與關機登出不經過選單，不會問。實際退出走可替換的 `BrowserWindowController.quitApp`，smoke 才不會結束程序。
 
+30. **多選收進資料夾**：側邊欄列 ⌘+點擊加入/移出多選（`BrowserWindowController.selection`，key = 釘選節點 id 或一般 Tab id；第一次 ⌘+點擊會把目前 Tab 一併納入；`TabRowView.isSelected` 用 active 底色顯示；一般點擊或 `rebuildRows` 會清除/修剪）。多選 ≥2 時對選中列按右鍵，選單變成「Move N Tabs to New Folder」「Close N Tabs」；前者呼叫 `TabManager.groupIntoNewFolder`（一般 Tab 釘進新資料夾、已釘選節點用 `pins.move` 移入；不能釘的 Tab 略過，全部失敗則不建資料夾），完成後資料夾進入改名。尚未做：多選一起拖曳、Command Palette 動作、鍵盤選取。
+
 ## 驗證狀況
 - smoke 全數通過（最後一次記錄為 475 項，macOS 26 / Swift 6.2.4；項數會隨新增 check 變動，以實際輸出為準）；accounts.google.com 登入頁載入成功（含 favicon）。
 - 冷啟動與已執行時 `open -a` 開外部連結已用打包的 .app 實測（session.json 有新 Tab）。

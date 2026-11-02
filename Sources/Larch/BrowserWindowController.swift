@@ -179,6 +179,64 @@ final class BrowserWindowController: NSObject, NSTextFieldDelegate, NSWindowDele
             }
         }
         sidebar.setRows(ordered)
+        selection.formIntersection(live)
+        applySelection()
+    }
+
+    // MARK: 多選（⌘+點擊）→ 收進資料夾
+
+    /// 多選中的列（rows 的 key：釘選節點 id 或一般 Tab id）。
+    private(set) var selection = Set<UUID>()
+
+    private var allRowViews: [TabRowView] { Array(rows.values) }
+
+    private func applySelection() {
+        for r in allRowViews { r.isSelected = r.selectionID.map(selection.contains) ?? false }
+    }
+
+    func clearSelection() {
+        guard !selection.isEmpty else { return }
+        selection.removeAll()
+        applySelection()
+    }
+
+    private func toggleSelect(_ row: TabRowView) {
+        guard let id = row.selectionID else { return }
+        // 第一次 ⌘+點擊時，把目前的 Tab 一併納入（它本來就是被選取的那列）。
+        if selection.isEmpty, let cur = tabs.activeTab, let curID = cur.pinID ?? Optional(cur.id), curID != id { selection.insert(curID) }
+        if selection.contains(id) { selection.remove(id) } else { selection.insert(id) }
+        applySelection()
+    }
+
+    /// 多選項目（依側邊欄順序：釘選區在前、一般 Tab 在後）。
+    private func selectedItems() -> (tabs: [Tab], pins: [PinNode]) {
+        let pinNodes = tabs.pins.visible().map(\.node).filter { !$0.isFolder && selection.contains($0.id) }
+        let regular = tabs.tabs.filter { $0.pinID == nil && selection.contains($0.id) }
+        return (regular, pinNodes)
+    }
+
+    @discardableResult
+    func groupSelectionIntoFolder() -> PinNode? {
+        let items = selectedItems()
+        guard !items.tabs.isEmpty || !items.pins.isEmpty else { return nil }
+        if !root.sidebarVisible { root.sidebarVisible = true }
+        selection.removeAll()
+        guard let folder = tabs.groupIntoNewFolder(tabs: items.tabs, pinNodes: items.pins) else { applySelection(); return nil }
+        applySelection()
+        beginRename(folder.id)
+        return folder
+    }
+
+    func finishRenameForSmoke(_ id: UUID) { folderRows[id]?.finishRename(commit: false) }
+
+    @objc private func groupSelectionClicked(_ sender: NSMenuItem?) { groupSelectionIntoFolder() }
+
+    @objc private func closeSelectionClicked(_ sender: NSMenuItem?) {
+        let items = selectedItems()
+        selection.removeAll()
+        let live = items.tabs + items.pins.compactMap { tabs.liveTab(forPin: $0.id) }
+        for t in live { tabs.close(t) }
+        applySelection()
     }
 
     private var folderRows: [UUID: FolderRowView] = [:]
@@ -200,8 +258,10 @@ final class BrowserWindowController: NSObject, NSTextFieldDelegate, NSWindowDele
     private func wire(_ row: TabRowView) {
         row.onSelect = { [weak self] row in
             guard let self else { return }
+            self.clearSelection()
             if let pin = row.pin { self.tabs.activatePin(pin) } else if let tab = row.tab { self.tabs.select(tab) }
         }
+        row.onToggleSelect = { [weak self] row in self?.toggleSelect(row) }
         row.onClose = { [weak self] row in
             if let tab = row.tab { self?.tabs.close(tab) } else if let pin = row.pin, let self { self.tabs.unpin(pin) }
         }
@@ -233,6 +293,11 @@ final class BrowserWindowController: NSObject, NSTextFieldDelegate, NSWindowDele
 
     private func menu(for row: TabRowView) -> NSMenu {
         let m = NSMenu()
+        if selection.count >= 2, let id = row.selectionID, selection.contains(id) {
+            m.addItem(menuItem("Move \(selection.count) Tabs to New Folder", #selector(groupSelectionClicked(_:))))
+            m.addItem(menuItem("Close \(selection.count) Tabs", #selector(closeSelectionClicked(_:))))
+            return m
+        }
         if let pin = row.pin {
             m.addItem(menuItem("Unpin", #selector(unpinClicked(_:)), id: pin.id))
             m.addItem(menuItem("Rename", #selector(renameClicked(_:)), id: pin.id))

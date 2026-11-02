@@ -175,6 +175,23 @@ final class TabManager {
         return node
     }
 
+    /// 把多個項目（一般 Tab 或釘選節點）收進一個新資料夾（最上層末尾）。
+    /// 不能釘的 Tab（空白、非 http）略過；一個都放不進去就不建資料夾（回傳 nil）。
+    @discardableResult
+    func groupIntoNewFolder(tabs ts: [Tab], pinNodes: [PinNode], name: String = "New Folder") -> PinNode? {
+        let folder = pins.addFolder(name: name, parent: nil)
+        var moved = 0
+        for node in pinNodes where !node.isFolder || !pins.isDescendant(folder.id, of: node.id) {
+            if pins.move(node.id, toParent: folder.id, index: pins.children(of: folder.id).count) { moved += 1 }
+        }
+        for t in ts where t.pinID == nil {
+            if pin(t, parent: folder.id) != nil { moved += 1 }
+        }
+        if moved == 0 { pins.deleteFolder(folder.id); return nil }
+        onStructureChange?()
+        return folder
+    }
+
     /// 取消釘選：開著的 Tab 變回一般 Tab（排在一般區最前），灰色的則直接移除。
     func unpin(_ node: PinNode) {
         guard pins.remove(node.id) != nil else { return }
