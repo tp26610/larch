@@ -215,7 +215,15 @@ final class DividerRowView: NSView, SidebarRow {
     var depth: Int { 0 }
     override var mouseDownCanMoveWindow: Bool { false }
 
-    init() {
+    /// 滑鼠移到分隔線上才出現的「關閉所有未釘選 Tab」按鈕（仿 Arc）；沒有一般 Tab 時為 nil。
+    private let clearButton = NSButton()
+    private var onClear: (() -> Void)?
+    var clearToolTip: String? { clearButton.toolTip }
+    var clearButtonVisible: Bool { !clearButton.isHidden }
+    func clickClear() { clearClicked() }
+
+    init(onClear: (() -> Void)? = nil) {
+        self.onClear = onClear
         super.init(frame: .zero)
         wantsLayer = true
         translatesAutoresizingMaskIntoConstraints = false
@@ -231,7 +239,32 @@ final class DividerRowView: NSView, SidebarRow {
             line.centerYAnchor.constraint(equalTo: centerYAnchor),
             line.heightAnchor.constraint(equalToConstant: 1),
         ])
+        clearButton.isBordered = false
+        clearButton.image = NSImage(systemSymbolName: "xmark", accessibilityDescription: "Close all unpinned tabs")
+        clearButton.contentTintColor = Theme.muted
+        clearButton.imageScaling = .scaleProportionallyDown
+        clearButton.toolTip = "Close all unpinned tabs"
+        clearButton.target = self
+        clearButton.action = #selector(clearClicked)
+        clearButton.alphaValue = 0
+        clearButton.isHidden = onClear == nil
+        clearButton.wantsLayer = true
+        clearButton.layer?.backgroundColor = Theme.panel.cgColor
+        clearButton.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(clearButton)
+        NSLayoutConstraint.activate([
+            clearButton.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -8),
+            clearButton.centerYAnchor.constraint(equalTo: centerYAnchor),
+            clearButton.widthAnchor.constraint(equalToConstant: 16),
+            clearButton.heightAnchor.constraint(equalToConstant: 16),
+        ])
+        addTrackingArea(NSTrackingArea(rect: .zero, options: [.mouseEnteredAndExited, .activeInKeyWindow, .inVisibleRect], owner: self))
     }
+
+    override func mouseEntered(with event: NSEvent) { clearButton.animator().alphaValue = 0.8 }
+    override func mouseExited(with event: NSEvent) { clearButton.animator().alphaValue = 0 }
+
+    @objc private func clearClicked() { onClear?() }
 
     required init?(coder: NSCoder) { fatalError() }
 }

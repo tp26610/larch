@@ -1695,7 +1695,17 @@ extension Smoke {
         check("動作 Close Other Tabs：只留目前與釘選的 Tab", Set(tm.tabs.map(ObjectIdentifier.init)) == Set([ObjectIdentifier(keep), ObjectIdentifier(pinned)]), "tabs=\(tm.tabs.count)")
         c.openPalette(prefill: nil); _ = cmd(#selector(NSResponder.insertTab(_:)))
         check("沒有其他一般 Tab 時 Close Other Tabs 隱藏", !actionIDs().contains("closeOthers"))
+        check("有一般 Tab 時 Close All Unpinned Tabs 可用", actionIDs().contains("closeAll"))
         p.dismiss()
+        let divider = c.sidebar.sidebarRows.compactMap { $0 as? DividerRowView }.first
+        check("分隔線有關閉全部按鈕", divider?.clearButtonVisible == true && divider?.clearToolTip == "Close all unpinned tabs")
+        let keepURL = keep.displayURL
+        divider?.clickClear()
+        check("分隔線按鈕：關閉所有一般 Tab，只留釘選", tm.tabs.map(ObjectIdentifier.init) == [ObjectIdentifier(pinned)], "tabs=\(tm.tabs.count)")
+        let divider2 = c.sidebar.sidebarRows.compactMap { $0 as? DividerRowView }.first
+        check("沒有一般 Tab 時分隔線不顯示按鈕", divider2?.clearButtonVisible == false)
+        tm.newTab(url: keepURL)
+        _ = await wait(2) { tm.activeTab?.pageTitle.isEmpty == false }
 
         run("little", query: "little")
         check("動作 Open in Little Window：以目前網址開 Little", c.littles.count == 1 && c.littles[0].tab.requestedURL == tm.activeTab?.displayURL)
@@ -1825,6 +1835,25 @@ extension Smoke {
         let btn = l1.root.backButton.convert(NSPoint(x: 5, y: 5), to: nil)
         check("工具列空白處可拖曳／雙擊；網頁卡片與按鈕不可", l1.window.isDraggableBar(at: bar) && !l1.window.isDraggableBar(at: cardPt) && !l1.window.isDraggableBar(at: btn))
         check("工具列高度 44、頁面在卡片內", l1.root.toolbarHeightForTest == 44 && l1.root.card.frame.maxY <= l1.root.bounds.height - 44 + 0.5)
+
+        // 點網址膠囊叫出命令列
+        l1.root.pill.onClick?()
+        check("點膠囊叫出命令列並預填完整網址", l1.root.palette.isOpen && l1.root.palette.field.stringValue == server.url("/b").absoluteString)
+        check("膠囊不可拖曳視窗", !l1.root.pill.mouseDownCanMoveWindow)
+        check("命令列開著時 Esc 只關命令列、不關視窗", { () -> Bool in
+            l1.window.performKeyEquivalent(with: NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0, windowNumber: l1.window.windowNumber, context: nil, characters: "\u{1b}", charactersIgnoringModifiers: "\u{1b}", isARepeat: false, keyCode: 53)!)
+            return l1.window.isVisible && !l1.root.palette.isOpen
+        }())
+        l1.window.performKeyEquivalent(with: NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [.command], timestamp: 0, windowNumber: l1.window.windowNumber, context: nil, characters: "ㄙ", charactersIgnoringModifiers: "ㄙ", isARepeat: false, keyCode: 37)!)
+        check("注音輸入法下 ⌘L（實體鍵位）也叫出命令列", l1.root.palette.isOpen)
+        l1.root.palette.dismiss()
+        l1.showPalette()
+        l1.root.palette.field.stringValue = server.url("/c").absoluteString
+        l1.root.palette.refresh()
+        l1.root.palette.pick(0)
+        check("命令列選取後在 Little 的 Tab 載入", await wait { l1.tab.pageTitle == "頁面 C" } && !l1.root.palette.isOpen && c.littles.count == 1)
+        l1.tab.load(server.url("/b"))
+        _ = await wait { l1.tab.pageTitle == "Page B" }
 
         // 多個 Little
         let l2 = c.openLittle(server.url("/c"))!
@@ -2118,6 +2147,8 @@ extension Smoke {
             }
             check("Little 為 key 時按 ⌘D/⌘S/⌘T/⌘L/⌘⇧N/⌘⇧T/Ctrl+S：主視窗完全不動", tm.pins.roots.count == pins && tm.tabs.count == tabs && m.root.sidebarVisible == sidebar
                   && tm.closedStack.count == closed && !m.root.palette.isOpen && !l.isClosed)
+            check("Little 為 key 時 ⌘L 叫出 Little 自己的命令列", l.root.palette.isOpen)
+            l.root.palette.dismiss()
             // 縮放 / 複製網址 / 重新整理 / 上一頁作用在 Little 的頁面，不是主視窗
             let mainZoom = tm.activeTab!.webView.pageZoom
             NSApp.sendEvent(keyEvent("+", .command, in: l.window))

@@ -161,7 +161,8 @@ final class BrowserWindowController: NSObject, NSTextFieldDelegate, NSWindowDele
                 ordered.append(row!)
             }
         }
-        ordered.append(DividerRowView())
+        let hasRegular = tabs.tabs.contains { $0.pinID == nil }
+        ordered.append(DividerRowView(onClear: hasRegular ? { [weak self] in self?.closeAllRegularTabs() } : nil))
         var handledSplit = Set<UUID>()
         for tab in tabs.tabs where tab.pinID == nil {
             if handledSplit.contains(tab.id) { continue }
@@ -675,6 +676,11 @@ final class BrowserWindowController: NSObject, NSTextFieldDelegate, NSWindowDele
     /// 除了目前 Tab 以外的一般（未釘選）Tab。
     func otherRegularTabs() -> [Tab] { tabs.tabs.filter { $0 !== tabs.activeTab && $0.pinID == nil } }
 
+    /// 關閉所有一般（未釘選）Tab，含目前這個；釘選的不動。
+    func closeAllRegularTabs() {
+        for t in tabs.tabs where t.pinID == nil { tabs.close(t) }
+    }
+
     func closeOtherTabs() {
         for t in otherRegularTabs() { tabs.close(t) }
     }
@@ -791,6 +797,7 @@ final class BrowserWindowController: NSObject, NSTextFieldDelegate, NSWindowDele
         lastLittle = (url, Date())
         let tab = tabs.makeTab()
         let little = LittleWindowController(tab: tab, prefs: prefs, near: window.isVisible ? window.frame : nil, cascade: littles.count)
+        little.history = { [weak self] in self?.tabs.history }
         little.onAddToTabs = { [weak self] tab in
             guard let self else { return }
             self.tabs.adopt(tab)

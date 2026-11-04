@@ -135,6 +135,8 @@ final class CommandPaletteView: NSView, NSTextFieldDelegate {
     /// 一般模式的提示文字（由外部依 ⌘T / ⌘L 設定）。
     var placeholder = "Search or enter address" { didSet { updateChrome() } }
 
+    /// 關閉時 Tab 鍵不進入動作模式（Little 視窗沒有動作可跑）。
+    var allowsActions = true
     private(set) var mode: PaletteMode = .normal
     private(set) var items: [PaletteItem] = []
     private(set) var selectedIndex = 0
@@ -259,7 +261,7 @@ final class CommandPaletteView: NSView, NSTextFieldDelegate {
 
     /// Tab 進入動作模式（保留已輸入的文字作為動作的查詢）。
     func enterActions() {
-        guard mode != .actions else { return }
+        guard allowsActions, mode != .actions else { return }
         mode = .actions
         updateChrome()
         refresh()

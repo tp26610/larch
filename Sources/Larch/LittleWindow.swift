@@ -10,14 +10,19 @@ final class LittleWindow: LarchWindow {
     var onReload: (() -> Void)?
     var onBack: (() -> Void)?
     var onForward: (() -> Void)?
+    var onEscapeWhileEditing: (() -> Bool)?
+    var onFocusAddress: (() -> Void)?
 
     /// 網頁取得焦點時按鍵會先被 WKWebView 吃掉，所以在視窗層級攔截（與主視窗的 ⌘W 同一個做法）。
     override func performKeyEquivalent(with event: NSEvent) -> Bool {
         guard event.type == .keyDown else { return super.performKeyEquivalent(with: event) }
         let mods = event.modifierFlags.intersection(.deviceIndependentFlagsMask).subtracting([.capsLock, .numericPad, .function])
-        let key = event.charactersIgnoringModifiers?.lowercased()
+        // 注音等非拉丁輸入法下 charactersIgnoringModifiers 不是英文字母：以實體鍵位（ANSI keyCode）為備援。
+        let chars = event.charactersIgnoringModifiers?.lowercased()
+        let codeKey: [UInt16: String] = [13: "w", 31: "o", 15: "r", 37: "l", 17: "t", 2: "d", 1: "s", 33: "[", 30: "]"]
+        let key = (chars.map { $0.unicodeScalars.allSatisfy(\.isASCII) } == true) ? chars : codeKey[event.keyCode]
         switch (mods, key, event.keyCode) {
-        case ([], _, 53): onClose?(); return true                                 // Esc
+        case ([], _, 53): if onEscapeWhileEditing?() == true { return true }; onClose?(); return true  // Esc：命令列開著時只關命令列
         case ([.command], "w", _), ([.control], "w", _): onClose?(); return true  // ⌘W / Ctrl+W
         case ([.command], "o", _): onAddToTabs?(); return true                    // ⌘O
         case ([.command], _, 36), ([.command], _, 76): onAddToTabs?(); return true // ⌘Return
@@ -25,10 +30,20 @@ final class LittleWindow: LarchWindow {
         case ([.command], "[", _): onBack?(); return true
         case ([.command], "]", _): onForward?(); return true
         // 主視窗專屬的快捷鍵不要在這裡誤觸主視窗。
-        case ([.control], "s", _), ([.command], "t", _), ([.command], "l", _), ([.command], "d", _), ([.command], "s", _): return true
+        case ([.command], "l", _): onFocusAddress?(); return true
+        case ([.control], "s", _), ([.command], "t", _), ([.command], "d", _), ([.command], "s", _): return true
         default: return super.performKeyEquivalent(with: event)
         }
     }
+}
+
+/// 膠囊底：點一下叫出命令列；不可拖曳視窗。
+@MainActor
+final class LittlePillView: NSView {
+    var onClick: (() -> Void)?
+    override var mouseDownCanMoveWindow: Bool { false }
+    override func mouseDown(with event: NSEvent) { onClick?() }
+    override func resetCursorRects() { addCursorRect(bounds, cursor: .iBeam) }
 }
 
 /// Little 視窗內容：上方 44px 工具列（淺白外框，與主視窗的綠色區分）+ 圓角網頁卡片。工具列空白處可拖曳視窗。
@@ -41,8 +56,9 @@ final class LittleRootView: NSView {
     let forwardButton = LittleRootView.iconButton("chevron.right", "Forward (⌘])")
     let reloadButton = LittleRootView.iconButton("arrow.clockwise", "Reload (⌘R)")
     /// 中央的網址膠囊：只顯示網域（純文字）；完整標題與網址放在 toolTip。
-    let pill = NSView()
+    let pill = LittlePillView()
     let urlLabel = NSTextField(labelWithString: "")
+    let palette = CommandPaletteView()
     let addButton = NSButton()
     private let toolbar = FlippedView()
 
@@ -78,6 +94,8 @@ final class LittleRootView: NSView {
         for v in [backButton, forwardButton, reloadButton, pill, addButton] { toolbar.addSubview(v) }
         addSubview(toolbar)
         addSubview(card)
+        palette.allowsActions = false
+        addSubview(palette)
     }
 
     required init?(coder: NSCoder) { fatalError() }
@@ -87,6 +105,8 @@ final class LittleRootView: NSView {
         let h = Self.toolbarHeight, m = Theme.margin
         toolbar.frame = NSRect(x: 0, y: bounds.height - h, width: bounds.width, height: h)
         card.frame = NSRect(x: m, y: m, width: max(0, bounds.width - 2 * m), height: max(0, bounds.height - h - m))
+        palette.frame = bounds
+        palette.anchorFrame = card.frame
         var x: CGFloat = 84 // 留給紅綠燈
         for b in [backButton, forwardButton, reloadButton] {
             b.frame = NSRect(x: x, y: (h - 28) / 2, width: 30, height: 28)
@@ -126,6 +146,8 @@ final class LittleWindowController: NSObject, NSWindowDelegate {
     /// 加到 Tabs：交出 Tab（搬移同一個 WKWebView）。
     var onAddToTabs: ((Tab) -> Void)?
     private let prefs: Preferences
+    /// 歷史來源（由主視窗提供）。
+    var history: (() -> HistoryStore?)?
     private var transferred = false
     private var closed = false
 
@@ -146,6 +168,7 @@ final class LittleWindowController: NSObject, NSWindowDelegate {
         window.backgroundColor = Theme.littleFrame
         window.minSize = NSSize(width: 520, height: 360)
         window.contentView = root
+        window.initialFirstResponder = tab.webView
         window.delegate = self
         if let mainFrame {
             let f = window.frame
@@ -159,6 +182,24 @@ final class LittleWindowController: NSObject, NSWindowDelegate {
         window.onReload = { [weak self] in self?.reloadOrStop() }
         window.onBack = { [weak self] in self?.tab.webView.goBack() }
         window.onForward = { [weak self] in self?.tab.webView.goForward() }
+        window.onEscapeWhileEditing = { [weak self] in
+            guard let self, self.root.palette.isOpen else { return false }
+            self.root.palette.dismiss()
+            return true
+        }
+        window.onFocusAddress = { [weak self] in
+            self?.showPalette()
+        }
+        root.palette.provider = { [weak self] q, _ in
+            guard let self else { return [] }
+            return PaletteSearch.results(for: q, tabs: [], history: self.history?())
+        }
+        root.palette.onPick = { [weak self] item in
+            if case .open(let url) = item.action { self?.tab.load(url) }
+            self?.refocusPage()
+        }
+        root.palette.onDismiss = { [weak self] in self?.refocusPage() }
+        root.pill.onClick = { [weak self] in self?.showPalette() }
         root.backButton.target = self; root.backButton.action = #selector(back)
         root.forwardButton.target = self; root.forwardButton.action = #selector(forward)
         root.reloadButton.target = self; root.reloadButton.action = #selector(reloadClicked)
@@ -192,6 +233,22 @@ final class LittleWindowController: NSObject, NSWindowDelegate {
         root.setLoading(tab.isLoading)
         root.card.loadingBar.update(loading: tab.isLoading, progress: tab.webView.estimatedProgress)
         window.title = tab.displayTitle
+    }
+
+    /// 點膠囊 / ⌘L：與 ⌘T 同款的命令列，結果在這個 Little 的頁面載入；預填目前網址並全選。
+    func showPalette() {
+        guard !closed else { return }
+        root.palette.placeholder = "Search or enter address"
+        root.palette.present()
+        if let s = tab.displayURL?.absoluteString, !s.isEmpty {
+            root.palette.field.stringValue = s
+            root.palette.field.currentEditor()?.selectAll(nil)
+            root.palette.refresh()
+        }
+    }
+
+    private func refocusPage() {
+        if window.firstResponder === window || window.firstResponder == nil || window.firstResponder is NSText { window.makeFirstResponder(tab.webView) }
     }
 
     @objc private func back() { tab.webView.goBack() }
