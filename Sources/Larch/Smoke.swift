@@ -1082,7 +1082,8 @@ extension Smoke {
         c.focusAddress()
         let shown2 = await wait(2) { buttonsVisible() }
         check("⌘L 在側邊欄隱藏時展開側邊欄 → 按鈕顯示", c.root.sidebarVisible && shown2)
-        check("真實滑鼠進出事件走 tracking area 的 owner 為 RootView", c.root.trackingAreas.contains { $0.owner === c.root && $0.rect == c.root.cornerRect })
+        check("真實滑鼠進出事件走 tracking area 的 owner 為 RootView", c.root.trackingAreas.contains { $0.owner === c.root && $0.rect == c.root.cornerRect },
+              "corner=\(c.root.cornerRect) bounds=\(c.root.bounds) areas=\(c.root.trackingAreas.map { "\(type(of: $0.owner as Any)) \($0.rect)" })")
     }
 
     static func doubleClickChecks(_ server: FixtureServer, _ app: AppDelegate) async throws {
