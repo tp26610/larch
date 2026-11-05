@@ -277,8 +277,12 @@ final class LittleWindowController: NSObject, NSWindowDelegate {
     func windowWillClose(_ notification: Notification) {
         guard !closed else { return }
         closed = true
-        if !transferred { tab.teardown() } // 搬走的 Tab 屬於主視窗，不能銷毀
-        tab.onChange = nil
+        if transferred {
+            // 搬走的 Tab 屬於主視窗：不能銷毀，也不能清 onChange（adopt 已改接成主視窗的回呼，清掉會讓側邊欄那一列永遠不更新、一直轉圈）。
+        } else {
+            tab.teardown()
+            tab.onChange = nil
+        }
         onClosed?(self)
     }
 }

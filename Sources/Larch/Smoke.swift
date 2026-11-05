@@ -1894,6 +1894,10 @@ extension Smoke {
         let n7 = tm.tabs.count
         l7.root.addButton.performClick(nil)
         check("「Add to Tabs」按鈕加到 Tabs", tm.tabs.count == n7 + 1 && tm.activeTab === l7.tab && l7.isClosed)
+        // 回歸：搬進主視窗的 Tab，Little 關閉後回呼仍要接著（曾被清成 nil → 側邊欄列永遠轉圈、標題停在網域）。
+        check("加到 Tabs 後 onChange 仍有接", l7.tab.onChange != nil)
+        l7.tab.load(server.url("/a?l7b"))
+        check("加到 Tabs 後載入結束側邊欄停止轉圈", await wait { c.sidebar.rowViews.first { $0.tab === l7.tab }?.isShowingSpinner == false && l7.tab.pageTitle == "Page A" })
 
         // Option+點連結
         let page = tm.newTab(url: server.url("/popup"))
