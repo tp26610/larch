@@ -31,7 +31,7 @@
 - **已驗證**：最小原型（`../my-browser/experiments/webkit-login/main.swift`）以**預設 UA**、帳密登入 Google 成功，重開後登入狀態保持。工作帳號 SSO、兩步驟驗證、passkey **沒測**。
 - 好處：網頁引擎由 macOS 更新（不用自己追 Chromium 修補）；Ctrl+Tab 等按鍵用原生處理，沒有 Electron 的 keyUp 坑；Little 只是一個 NSWindow。
 - 代價：沒有 Chrome 擴充功能；部分網站對 WebKit 相容性略差；Widevine 不適用（Netflix 等以 FairPlay 走系統）；Electron 的 JS 程式全部重寫（功能邏輯可照搬）。
-- 資料夾 `my-browser-mac` 後來改名為 `larch`；GitHub 私人 repo `tp26610/larch`。
+- 資料夾 `my-browser-mac` 後來改名為 `larch`；GitHub 公開 repo `tp26610/larch`。
 
 ### D5. 不用 React Native / Flutter 做跨平台
 它們只負責介面，網頁內容仍要靠各平台的 webview（macOS WebKit、Windows WebView2、Linux WebKitGTK），三個引擎行為不同，等於要處理三個瀏覽器。Ardia 的做法就是 React Native 外殼 + 另外的 Chromium。Brian 只用 Mac，所以不做跨平台。
