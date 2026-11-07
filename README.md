@@ -12,6 +12,7 @@ swift scripts/make-icon.swift  # 重新產生 App 圖示 assets/AppIcon.icns
 需求：macOS 14+、Xcode 26 / Swift 6.2。
 
 ## 安裝並設為預設瀏覽器
+直接下載：到 [Releases](https://github.com/tp26610/larch/releases) 下載最新 dmg（需要 Apple Silicon 的 Mac），把 Larch 拖進 Applications 即可。以下是從原始碼安裝：
 ```bash
 scripts/install.sh      # 打包、簽章（有 Developer ID 就用，否則 ad-hoc）、複製到 /Applications/Larch.app 並向 LaunchServices 註冊
 ```
@@ -20,12 +21,12 @@ scripts/install.sh      # 打包、簽章（有 Developer ID 就用，否則 ad-
    或：系統設定 > 桌面與 Dock > 預設網頁瀏覽器 > Larch。
 3. 之後其他 App 的連結與 .html 檔會在這裡開新 Tab（已執行或冷啟動都一樣）。
 
-Gatekeeper：自己在這台 Mac 建置並安裝的 app 沒有隔離標記，不會被擋。若 .app 是經 AirDrop / 下載 / 壓縮檔從別處拿來的，第一次開啟被擋時：
+Gatekeeper：GitHub Releases 的 dmg 已用 Developer ID 簽章並經 Apple 公證，下載後直接開啟即可，不需要 `xattr`。自己用 `scripts/bundle.sh` 預設（ad-hoc）打包、再經 AirDrop / 壓縮檔轉給別台 Mac 的 .app 才會被擋，第一次開啟時：
 ```bash
 xattr -dr com.apple.quarantine "/Applications/Larch.app"
 ```
 或在 Finder 對 app 按右鍵 > 打開 > 打開；或系統設定 > 隱私權與安全性 > 「仍要打開」。
-每次重新安裝會換簽章身分（ad-hoc），系統可能要求重新確認預設瀏覽器；登入資料存放在系統 WebKit 的 data store（依 bundle id），重裝不會遺失。
+ad-hoc 安裝每次重裝會換簽章身分，系統可能要求重新確認預設瀏覽器；有 Developer ID 的安裝身分固定。登入資料存放在系統 WebKit 的 data store（依 bundle id），重裝不會遺失。
 資料位置：`~/Library/Application Support/Larch/`（session.json、history.json）；下載存到 `~/Downloads`。
 
 ## 目前功能
