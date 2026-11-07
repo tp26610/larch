@@ -1,5 +1,6 @@
 #!/bin/bash
-# 把 release 版包成 build/Larch.app（ad-hoc 簽章）。版本號讀根目錄 VERSION。用法：scripts/bundle.sh
+# 把 release 版包成 build/Larch.app。版本號讀根目錄 VERSION。用法：scripts/bundle.sh
+# 簽章：預設 ad-hoc；設 SIGN_IDENTITY="Developer ID Application: 姓名 (TEAMID)" 則用 hardened runtime + 時間戳正式簽章（可公證）。
 set -euo pipefail
 cd "$(dirname "$0")/.."
 swift build -c release
@@ -44,5 +45,11 @@ cat > "$APP/Contents/Info.plist" <<PLIST
 PLIST
 plutil -lint "$APP/Contents/Info.plist" >/dev/null
 [ "$(plutil -extract NSAppTransportSecurity.NSAllowsArbitraryLoadsInWebContent raw "$APP/Contents/Info.plist")" = true ] || { echo "Info.plist 缺 ATS 網頁內容例外" >&2; exit 1; }
-codesign --force --sign - "$APP"
+SIGN_IDENTITY="${SIGN_IDENTITY:--}"
+if [ "$SIGN_IDENTITY" = "-" ]; then
+  codesign --force --sign - "$APP"
+else
+  codesign --force --options runtime --timestamp --entitlements assets/Larch.entitlements --sign "$SIGN_IDENTITY" "$APP"
+  codesign --verify --strict --verbose=2 "$APP"
+fi
 echo "完成：$APP"

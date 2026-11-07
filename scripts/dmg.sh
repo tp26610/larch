@@ -11,4 +11,7 @@ ln -s /Applications "$STAGE/Applications"
 DMG="build/Larch-$VERSION-arm64.dmg"
 rm -f "$DMG"
 hdiutil create -volname "Larch" -srcfolder "$STAGE" -ov -format UDZO "$DMG" >/dev/null
+if [ -n "${SIGN_IDENTITY:-}" ] && [ "$SIGN_IDENTITY" != "-" ]; then
+  codesign --force --timestamp --sign "$SIGN_IDENTITY" "$DMG"
+fi
 echo "完成：$DMG"

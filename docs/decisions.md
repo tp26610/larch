@@ -76,9 +76,9 @@
 **WebKit 路線解決了**：引擎安全更新由 macOS 提供；網頁權限預設全拒；憑證錯誤預設阻擋且不提供略過；UI 中網頁來源的標題與網址一律純文字。
 
 **尚未解決（要當長期主力前）**：
-- 正式簽章與公證（Apple Developer Program，US$99/年，Brian 還沒有）；目前 ad-hoc 簽章，每次重裝簽章身分會變，系統可能要求重新確認預設瀏覽器。
-- 自動更新：Sparkle 這類機制需要 Developer ID 簽章；沒有的話就是手動重新 build 並 `scripts/install.sh`。
-- **Passkey**：在 WKWebView 內存取系統 passkey（含 iCloud 鑰匙圈與實體安全金鑰），需要 Apple 核發的 entitlement `com.apple.developer.web-browser.public-key-credential`，要用專用表單申請（依 Apple 工程師在開發者論壇的說法，須由帳號 Account Holder 送出），且需 Developer ID 簽章。論壇上核准經驗不一致（有人卡在「已提交」），時間與成功率沒有保證；個人帳號是否符合資格不確定。實體安全金鑰在 WKWebView 是否可用，沒有查到足夠資料，需實測。目前帳密登入可用，passkey 通常是可選。
+- 正式簽章與公證：**已完成（2026-11-07）**。Team「Ming Che Yeh」（D39W45PJ9Y，Individual，Brian 為 Account Holder）；`SIGN_IDENTITY="Developer ID Application: Ming Che Yeh (D39W45PJ9Y)" scripts/dmg.sh && scripts/notarize.sh`，0.1.7 dmg 公證通過並已 staple。預設（沒設 `SIGN_IDENTITY`）仍是 ad-hoc。Xcode 的 Manage Certificates 建 Developer ID 時曾誤報「只有 Account Holder 能做」，改用 developer.apple.com 網頁 + 自產 CSR 成功。
+- 自動更新：Sparkle 這類機制需要 Developer ID 簽章，前提已具備，尚未實作；目前仍是手動重新 build 並 `scripts/install.sh`。
+- **Passkey**：在 WKWebView 內存取系統 passkey（含 iCloud 鑰匙圈與實體安全金鑰），需要 Apple 核發的 entitlement `com.apple.developer.web-browser.public-key-credential`，要用專用表單申請（依 Apple 工程師在開發者論壇的說法，須由帳號 Account Holder 送出），且需 Developer ID 簽章（已具備）。論壇上核准經驗不一致（有人卡在「已提交」），時間與成功率沒有保證；個人帳號是否符合資格不確定。實體安全金鑰在 WKWebView 是否可用，沒有查到足夠資料，需實測。目前帳密登入可用，passkey 通常是可選。
 - `history.json`、`session.json` 是明文（存在 `~/Library/Application Support/Larch/`）。
 - Safe Browsing 類的釣魚網站警告：WKWebView 預設行為，Larch 沒有特別驗證或自訂。
 
