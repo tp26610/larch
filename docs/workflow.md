@@ -6,7 +6,7 @@ CLAUDE.md 放架構與決策；這裡放「怎麼做事」。開工前不必全�
 - 改完功能先跑 `scripts/smoke.sh`。跑之前確認沒有已安裝的 Larch 在執行（`pgrep -fl Larch`），有就 `osascript -e 'tell application "Larch" to quit'`；它會跟 smoke 搶 key window，造成偶發失敗（見 CLAUDE.md 第 24 點）。
 - 會影響畫面或候選列內容的改動（包含排序、比對規則，不只樣式），要重新安裝真實 app 才算驗證：`scripts/install.sh`，再 `open -a /Applications/Larch.app`。只跑 build 與 smoke 時，已安裝的舊版仍帶著舊行為。
 - 實測有問題時先看 Larch 自己顯示的畫面（錯誤頁、截圖），再判斷是網站還是 Larch 的問題。
-- `install.sh` 用 ad-hoc 簽章，每次重建簽章都會變，macOS 可能重新詢問 keychain 存取。這是已知現象，不是 bug。
+- `install.sh` 預設用鑰匙圈裡的 Developer ID 簽章（身分固定，不會每次重新詢問 keychain 存取）；找不到憑證才退回 ad-hoc，此時每次重建簽章都會變，macOS 可能重新詢問，是已知現象不是 bug。
 
 ## 網頁行為「沒反應」的除錯
 不要憑印象猜網頁怎麼觸發，先看實際事件。2026-11-02 的 Slack 登入交接就是前兩次改錯路徑：真正的觸發點是隱藏 iframe（`main=false`）載入 `slack://`。

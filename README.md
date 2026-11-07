@@ -13,7 +13,7 @@ swift scripts/make-icon.swift  # 重新產生 App 圖示 assets/AppIcon.icns
 
 ## 安裝並設為預設瀏覽器
 ```bash
-scripts/install.sh      # 打包、ad-hoc 簽章、複製到 /Applications/Larch.app 並向 LaunchServices 註冊
+scripts/install.sh      # 打包、簽章（有 Developer ID 就用，否則 ad-hoc）、複製到 /Applications/Larch.app 並向 LaunchServices 註冊
 ```
 1. 打開 `/Applications/Larch.app`。
 2. 選單 Larch > Make Default Browser…，在系統對話框按「使用 Larch」（http 與 https 各一次）。
