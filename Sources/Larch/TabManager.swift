@@ -1,5 +1,6 @@
 import AppKit
 import WebKit
+import Network
 
 struct ClosedTab: Equatable {
     let url: URL
@@ -36,6 +37,26 @@ final class TabManager {
         config.websiteDataStore = dataStore
         config.preferences.isElementFullscreenEnabled = true
         configuration = config
+        startNetworkMonitor()
+    }
+
+    private var pathMonitor: NWPathMonitor?
+
+    /// 開機或喚醒後網路比 app 晚就緒，還原的 Tab 會停在「You are offline」；網路恢復時自動重試這些 Tab。
+    private func startNetworkMonitor() {
+        let monitor = NWPathMonitor()
+        monitor.pathUpdateHandler = { [weak self] path in
+            let satisfied = path.status == .satisfied
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                guard satisfied else { return }
+                // 路徑剛通時 DNS 可能還沒好，稍等再重試。
+                try? await Task.sleep(nanoseconds: 1_000_000_000)
+                for tab in self.tabs { tab.retryIfNetworkError() }
+            }
+        }
+        monitor.start(queue: DispatchQueue(label: "larch.network"))
+        pathMonitor = monitor
     }
 
     @discardableResult

@@ -48,6 +48,50 @@ final class Tab: NSObject, WKNavigationDelegate, WKUIDelegate {
     var displayURL: URL? { errorURL ?? url ?? requestedURL }
     /// 載入失敗時顯示說明頁；此時網址列仍顯示失敗的網址。
     private(set) var errorURL: URL?
+    /// 說明頁是不是網路層失敗（非憑證錯誤）；網路恢復時可自動重試。
+    private var errorRetriableOnNetwork = false
+
+    /// 網路恢復時呼叫：只重試因網路失敗而停在說明頁的 Tab。
+    func retryIfNetworkError() {
+        guard errorURL != nil, errorRetriableOnNetwork, !isLoading else { return }
+        reloadOrRetry()
+    }
+
+    /// 最後一次成功載入的標題與 favicon（與網址綁定）。網路失敗時說明頁的標題是「You are offline」，
+    /// 此時改顯示這份記憶，重開機後網路還沒好的還原 Tab 才不會全變成同一個標題。
+    private var remembered: (url: URL, title: String?, favicon: NSImage?)?
+
+    /// 還原 session 時帶入上次的標題與 favicon。
+    func seedRemembered(url: URL, title: String?, faviconPNG: Data?) {
+        let image = faviconPNG.flatMap { NSImage(data: $0) }
+        guard title?.isEmpty == false || image != nil else { return }
+        remembered = (url: url, title: title, favicon: image)
+        if favicon == nil { favicon = image }
+        notify()
+    }
+
+    private func remember(url: URL, title: String? = nil, favicon: NSImage? = nil) {
+        var r: (url: URL, title: String?, favicon: NSImage?) = remembered?.url == url ? remembered! : (url: url, title: nil, favicon: nil)
+        if let title, !title.isEmpty { r.title = title }
+        if let favicon { r.favicon = favicon }
+        remembered = r
+    }
+
+    /// 要存進 session 的標題（說明頁上不存「You are offline」）。
+    var sessionTitle: String? {
+        guard let u = displayURL, remembered?.url == u else { return errorURL == nil && !pageTitle.isEmpty ? pageTitle : nil }
+        return errorURL == nil && !pageTitle.isEmpty ? pageTitle : remembered?.title
+    }
+
+    var sessionFaviconPNG: Data? {
+        guard let u = displayURL, remembered?.url == u else { return faviconPNG }
+        return faviconPNG ?? remembered?.favicon.flatMap { Tab.png($0) }
+    }
+
+    private static func png(_ image: NSImage) -> Data? {
+        guard let tiff = image.tiffRepresentation else { return nil }
+        return NSBitmapImageRep(data: tiff)?.representation(using: .png, properties: [:])
+    }
 
     /// 重新整理；說明頁上則重試原網址。
     func reloadOrRetry() {
@@ -57,7 +101,10 @@ final class Tab: NSObject, WKNavigationDelegate, WKUIDelegate {
 
     var displayTitle: String {
         if let c = customTitle, !c.isEmpty { return c }
+        if errorURL != nil, errorRetriableOnNetwork, let u = errorURL, remembered?.url == u,
+           let t = remembered?.title, !t.isEmpty { return t }
         if !pageTitle.isEmpty { return pageTitle }
+        if url == nil, let u = requestedURL, remembered?.url == u, let t = remembered?.title, !t.isEmpty { return t }
         if let host = url?.host { return host }
         return "New Tab"
     }
@@ -100,6 +147,7 @@ final class Tab: NSObject, WKNavigationDelegate, WKUIDelegate {
 
     /// 標題常在 didFinish 之後才到；補更新歷史標題。
     private func updateVisitTitle() {
+        if errorURL == nil, !pageTitle.isEmpty, let u = webView.url, InputNormalizer.isHTTP(u) { remember(url: u, title: pageTitle) }
         if let url = visitedURL, url == webView.url, !pageTitle.isEmpty, errorURL == nil { onVisit?(url, pageTitle) }
     }
 
@@ -269,7 +317,8 @@ final class Tab: NSObject, WKNavigationDelegate, WKUIDelegate {
     func webView(_ webView: WKWebView, didCommit navigation: WKNavigation!) {
         requestedURL = nil
         if let host = webView.url?.host, InputNormalizer.isHTTP(webView.url) { webView.pageZoom = zoomStore?.zoom(for: host) ?? 1 }
-        favicon = nil
+        // 網路失敗的說明頁沿用上次的 favicon，不要變回空白方塊。
+        if errorURL != nil, errorRetriableOnNetwork, remembered?.url == errorURL { favicon = remembered?.favicon } else { favicon = nil }
         notify()
     }
 
@@ -286,6 +335,7 @@ final class Tab: NSObject, WKNavigationDelegate, WKUIDelegate {
         guard ErrorPage.shouldShow(ns) else { return }
         let failing = (ns.userInfo[NSURLErrorFailingURLErrorKey] as? URL) ?? requestedURL
         errorURL = failing
+        errorRetriableOnNetwork = ns.domain == NSURLErrorDomain && !ErrorPage.isCertificateError(ns)
         requestedURL = nil
         webView.loadHTMLString(ErrorPage.html(for: ns, url: failing), baseURL: nil)
         notify()
@@ -443,6 +493,7 @@ final class Tab: NSObject, WKNavigationDelegate, WKUIDelegate {
                     MainActor.assumeIsolated {
                         guard let self, self.webView.url == pageURL else { return }
                         self.favicon = image
+                        self.remember(url: pageURL, favicon: image)
                         self.notify()
                     }
                 }

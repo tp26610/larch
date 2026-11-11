@@ -6,6 +6,9 @@ struct SessionSnapshot: Codable, Equatable {
         var url: String
         var customTitle: String?
         var pinID: String?
+        /// 上次成功載入的標題與 favicon（PNG）；還原時網路沒好也能顯示。
+        var title: String?
+        var favicon: Data?
     }
     var version = 1
     var tabs: [Entry]
@@ -30,7 +33,8 @@ enum SessionStore {
         for tab in tabs.tabs {
             guard let url = tab.displayURL, InputNormalizer.isHTTP(url) else { continue }
             if tab === tabs.activeTab { active = entries.count }
-            entries.append(.init(url: url.absoluteString, customTitle: tab.customTitle, pinID: tab.pinID?.uuidString))
+            entries.append(.init(url: url.absoluteString, customTitle: tab.customTitle, pinID: tab.pinID?.uuidString,
+                                  title: tab.sessionTitle, favicon: tab.sessionFaviconPNG))
         }
         return SessionSnapshot(tabs: entries, active: active)
     }

@@ -110,6 +110,7 @@ final class BrowserWindowController: NSObject, NSTextFieldDelegate, NSWindowDele
                     tabs.pins.find(id)?.node.isFolder == false && tabs.liveTab(forPin: id) == nil ? id : nil
                 }
                 let tab = tabs.newTab(url: URL(string: entry.url), customTitle: entry.customTitle, activate: false, pinID: pinID)
+                if let u = URL(string: entry.url) { tab.seedRemembered(url: u, title: entry.title, faviconPNG: entry.favicon) }
                 if i == snap.active { active = tab }
             }
             if let active { tabs.select(active) }
