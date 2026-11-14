@@ -68,7 +68,11 @@ final class FolderRowView: NSView, SidebarRow, NSTextFieldDelegate {
     var onToggle: ((PinNode) -> Void)?
     var onRename: ((PinNode, String) -> Void)?
     var onMenu: ((FolderRowView) -> NSMenu?)?
+    /// 資料夾底下（含子資料夾）開著的 Tab 數；為 0 時不顯示關閉鈕。
+    var liveTabCount: ((PinNode) -> Int)?
+    var onCloseAll: ((PinNode) -> Void)?
 
+    private let closeButton = NSButton()
     private let icon = NSImageView()
     private let label = NSTextField(labelWithString: "")
     let renameField = NSTextField()
@@ -103,7 +107,15 @@ final class FolderRowView: NSView, SidebarRow, NSTextFieldDelegate {
         renameField.focusRingType = .none
         renameField.isHidden = true
         renameField.delegate = self
-        for v in [icon, label, renameField] {
+        closeButton.isBordered = false
+        closeButton.image = NSImage(systemSymbolName: "minus", accessibilityDescription: "Close all tabs in folder")
+        closeButton.contentTintColor = Theme.muted
+        closeButton.imageScaling = .scaleProportionallyDown
+        closeButton.toolTip = "Close All Tabs in Folder"
+        closeButton.target = self
+        closeButton.action = #selector(closeAllClicked)
+        closeButton.alphaValue = 0
+        for v in [icon, label, renameField, closeButton] {
             v.translatesAutoresizingMaskIntoConstraints = false
             addSubview(v)
         }
@@ -114,10 +126,14 @@ final class FolderRowView: NSView, SidebarRow, NSTextFieldDelegate {
             icon.widthAnchor.constraint(equalToConstant: 18),
             icon.heightAnchor.constraint(equalToConstant: 16),
             label.leadingAnchor.constraint(equalTo: icon.trailingAnchor, constant: 8),
-            label.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -8),
+            closeButton.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -6),
+            closeButton.centerYAnchor.constraint(equalTo: centerYAnchor),
+            closeButton.widthAnchor.constraint(equalToConstant: 20),
+            closeButton.heightAnchor.constraint(equalToConstant: 20),
+            label.trailingAnchor.constraint(equalTo: closeButton.leadingAnchor, constant: -4),
             label.centerYAnchor.constraint(equalTo: centerYAnchor),
             renameField.leadingAnchor.constraint(equalTo: label.leadingAnchor),
-            renameField.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -8),
+            renameField.trailingAnchor.constraint(equalTo: closeButton.leadingAnchor, constant: -4),
             renameField.centerYAnchor.constraint(equalTo: centerYAnchor),
             renameField.heightAnchor.constraint(equalToConstant: 22),
         ])
@@ -132,9 +148,24 @@ final class FolderRowView: NSView, SidebarRow, NSTextFieldDelegate {
         icon.image = NSImage(systemSymbolName: node.expanded ? "folder.fill" : "folder", accessibilityDescription: node.expanded ? "Open folder" : "Folder")
     }
 
-    override func mouseEntered(with event: NSEvent) { hovering = true; layer?.backgroundColor = Theme.hover.cgColor }
-    override func mouseExited(with event: NSEvent) { hovering = false; layer?.backgroundColor = NSColor.clear.cgColor }
+    override func mouseEntered(with event: NSEvent) {
+        hovering = true
+        layer?.backgroundColor = Theme.hover.cgColor
+        closeButton.alphaValue = (liveTabCount?(node) ?? 0) > 0 ? 0.8 : 0
+    }
+    override func mouseExited(with event: NSEvent) {
+        hovering = false
+        layer?.backgroundColor = NSColor.clear.cgColor
+        closeButton.alphaValue = 0
+    }
     override func menu(for event: NSEvent) -> NSMenu? { onMenu?(self) }
+
+    var closeButtonVisible: Bool { closeButton.alphaValue > 0 }
+    @objc func closeAllClicked() {
+        onCloseAll?(node)
+        // 滑鼠還停在列上，不會再收到 mouseEntered；關完沒有開著的 Tab 就立刻隱藏按鈕
+        if hovering { closeButton.alphaValue = (liveTabCount?(node) ?? 0) > 0 ? 0.8 : 0 }
+    }
 
     override func mouseDown(with event: NSEvent) {
         downPoint = event.locationInWindow

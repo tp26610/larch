@@ -318,6 +318,8 @@ final class BrowserWindowController: NSObject, NSTextFieldDelegate, NSWindowDele
         row.onToggle = { [weak self] node in self?.tabs.pins.setExpanded(node.id, !node.expanded) }
         row.onRename = { [weak self] node, text in self?.tabs.pins.rename(node.id, to: text) }
         row.onMenu = { [weak self] row in self?.menu(for: row) }
+        row.liveTabCount = { [weak self] node in self?.liveTabs(in: node).count ?? 0 }
+        row.onCloseAll = { [weak self] node in self?.closeTabs(in: node) }
         folderRows[node.id] = row
         return row
     }
@@ -380,8 +382,33 @@ final class BrowserWindowController: NSObject, NSTextFieldDelegate, NSWindowDele
         return m
     }
 
+    /// 資料夾底下（含子資料夾）目前開著的 Tab。
+    func liveTabs(in folder: PinNode) -> [Tab] {
+        var out: [Tab] = []
+        func walk(_ nodes: [PinNode]) {
+            for n in nodes {
+                if n.isFolder { walk(n.children) } else if let t = tabs.liveTab(forPin: n.id) { out.append(t) }
+            }
+        }
+        walk(folder.children)
+        return out
+    }
+
+    /// 關閉資料夾底下所有開著的 Tab；釘選節點保留（變灰），與單列的關閉一致。
+    func closeTabs(in folder: PinNode) {
+        for t in liveTabs(in: folder) { tabs.close(t) }
+    }
+
+    @objc private func closeFolderTabsClicked(_ sender: NSMenuItem) {
+        if let id = sender.representedObject as? UUID, let n = tabs.pins.find(id)?.node { closeTabs(in: n) }
+    }
+
     private func menu(for row: FolderRowView) -> NSMenu {
         let m = NSMenu()
+        if !liveTabs(in: row.node).isEmpty {
+            m.addItem(menuItem("Close All Tabs in Folder", #selector(closeFolderTabsClicked(_:)), id: row.node.id))
+            m.addItem(.separator())
+        }
         m.addItem(menuItem("Rename", #selector(renameClicked(_:)), id: row.node.id))
         m.addItem(menuItem("New Folder Inside", #selector(newFolderClicked(_:)), id: row.node.id))
         m.addItem(.separator())

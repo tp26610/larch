@@ -1284,6 +1284,18 @@ extension Smoke {
         check("拖到資料夾中間 → 放進資料夾", { c2.resolveDrop(.tab(reg.id), over: .pin(folder.id), fraction: 0.5)?.indicator == .into }())
         c2.resolveDrop(.tab(reg.id), over: .pin(folder.id), fraction: 0.5)?.commit()
         check("一般 Tab 拖進資料夾 → 釘在裡面", reg.pinID != nil && tm2.pins.find(reg.pinID!)?.parent?.id == folder.id && folder.expanded)
+        // 資料夾關閉鈕：關閉底下所有開著的 Tab，保留釘選節點（用獨立資料夾，不影響後面的檢查）
+        let cf = tm2.pins.addFolder(parent: nil)
+        let ct = tm2.newTab(url: server.url("/c"))
+        _ = await wait { ct.pageTitle == "頁面 C" }
+        tm2.pin(ct)
+        _ = tm2.pins.move(ct.pinID!, toParent: cf.id, index: 0)
+        let cfRow = c2.sidebar.sidebarRows.compactMap { $0 as? FolderRowView }.first { $0.node.id == cf.id }!
+        check("資料夾有開著的 Tab → 可關閉", c2.liveTabs(in: cf).count == 1 && cfRow.liveTabCount?(cf) == 1)
+        let pinID = ct.pinID!
+        cfRow.closeAllClicked()
+        check("關閉資料夾所有 Tab → Tab 關掉、釘選保留", c2.liveTabs(in: cf).isEmpty && tm2.pins.find(pinID) != nil && !tm2.tabs.contains { $0 === ct })
+        tm2.pins.deleteFolder(cf.id)
         check("資料夾內的釘選列縮排一層", c2.sidebar.rowViews.first { $0.tab === reg }?.depth == 1)
         check("資料夾不能拖進自己", c2.resolveDrop(.pin(folder.id), over: .pin(reg.pinID!), fraction: 0.5) == nil)
         // 收合
