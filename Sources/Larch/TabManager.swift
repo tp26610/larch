@@ -201,16 +201,23 @@ final class TabManager {
     @discardableResult
     func groupIntoNewFolder(tabs ts: [Tab], pinNodes: [PinNode], name: String = "New Folder") -> PinNode? {
         let folder = pins.addFolder(name: name, parent: nil)
+        let moved = moveIntoFolder(tabs: ts, pinNodes: pinNodes, folder: folder.id)
+        if moved == 0 { pins.deleteFolder(folder.id); return nil }
+        return folder
+    }
+
+    /// 把多個項目收進既有資料夾（末尾）。回傳實際移入的數量。
+    @discardableResult
+    func moveIntoFolder(tabs ts: [Tab], pinNodes: [PinNode], folder: UUID) -> Int {
         var moved = 0
-        for node in pinNodes where !node.isFolder || !pins.isDescendant(folder.id, of: node.id) {
-            if pins.move(node.id, toParent: folder.id, index: pins.children(of: folder.id).count) { moved += 1 }
+        for node in pinNodes {
+            if pins.move(node.id, toParent: folder, index: pins.children(of: folder).count) { moved += 1 }
         }
         for t in ts where t.pinID == nil {
-            if pin(t, parent: folder.id) != nil { moved += 1 }
+            if pin(t, parent: folder) != nil { moved += 1 }
         }
-        if moved == 0 { pins.deleteFolder(folder.id); return nil }
-        onStructureChange?()
-        return folder
+        if moved > 0 { onStructureChange?() }
+        return moved
     }
 
     /// 取消釘選：開著的 Tab 變回一般 Tab（排在一般區最前），灰色的則直接移除。

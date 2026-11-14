@@ -1337,8 +1337,40 @@ extension Smoke {
             check("多選收進新資料夾：Tab 綁定節點、選取清空", m1.pinID != nil && m2.pinID != nil && m3.pinID == nil && c2.selection.isEmpty && tm2.pins.roots.filter(\.isFolder).count == folderCount + 1)
             if let f { c2.finishRenameForSmoke(f.id) }
             cmdClick(m3)
-            c2.sidebar.rowViews.first { $0.tab === m3 }?.mouseDown(with: NSEvent.mouseEvent(with: .leftMouseDown, location: .zero, modifierFlags: [], timestamp: 0, windowNumber: c2.window.windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: 1)!)
+            let m3Row = c2.sidebar.rowViews.first { $0.tab === m3 }
+            m3Row?.mouseDown(with: NSEvent.mouseEvent(with: .leftMouseDown, location: .zero, modifierFlags: [], timestamp: 0, windowNumber: c2.window.windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: 1)!)
+            m3Row?.mouseUp(with: NSEvent.mouseEvent(with: .leftMouseUp, location: .zero, modifierFlags: [], timestamp: 0, windowNumber: c2.window.windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: 1)!)
             check("一般點擊 → 清除多選", c2.selection.isEmpty)
+
+            // Shift+點擊範圍選取、整批拖進資料夾、右鍵移進既有資料夾
+            let n1 = tm2.newTab(url: server.url("/a")), n2 = tm2.newTab(url: server.url("/b")), n3 = tm2.newTab(url: server.url("/c")), n4 = tm2.newTab(url: server.url("/a"))
+            _ = await wait { n1.pageTitle == "Page A" && n2.pageTitle == "Page B" && n3.pageTitle == "頁面 C" && n4.pageTitle == "Page A" }
+            tm2.select(n1)
+            c2.root.layoutSubtreeIfNeeded()
+            func click(_ t: Tab, _ mods: NSEvent.ModifierFlags) {
+                guard let r = c2.sidebar.rowViews.first(where: { $0.tab === t }), let w = r.window else { return }
+                let p = r.convert(NSPoint(x: r.bounds.midX, y: r.bounds.midY), to: nil)
+                r.mouseDown(with: NSEvent.mouseEvent(with: .leftMouseDown, location: p, modifierFlags: mods, timestamp: 0, windowNumber: w.windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: 1)!)
+                r.mouseUp(with: NSEvent.mouseEvent(with: .leftMouseUp, location: p, modifierFlags: mods, timestamp: 0, windowNumber: w.windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: 1)!)
+            }
+            click(n3, .shift)
+            check("Shift+點擊：目前 Tab 到被點的列全選", c2.selection == [n1.id, n2.id, n3.id], "\(c2.selection.count)")
+            click(n2, [])
+            check("多選中的列一般點擊（放開時）→ 清除多選並切換", c2.selection.isEmpty && tm2.activeTab === n2)
+            click(n2, []); click(n4, .shift)
+            check("Shift+點擊：錨點是上次點的列", c2.selection == [n2.id, n3.id, n4.id])
+            // 整批拖進資料夾
+            let dest = tm2.pins.addFolder(name: "Dest", parent: nil)
+            c2.root.layoutSubtreeIfNeeded()
+            c2.resolveDrop(.tab(n3.id), over: .pin(dest.id), fraction: 0.5)?.commit()
+            check("多選拖進資料夾：三個 Tab 都進去且順序依側邊欄", tm2.pins.children(of: dest.id).map(\.url) == [n2, n3, n4].map { $0.displayURL?.absoluteString } && [n2, n3, n4].allSatisfy { $0.pinID != nil } && c2.selection.isEmpty)
+            check("多選拖曳不影響未選的 Tab", n1.pinID == nil)
+            // 右鍵移進既有資料夾
+            let dest2 = tm2.pins.addFolder(name: "Dest2", parent: nil)
+            click(n1, [])
+            c2.selectForSmoke([n1.id, n2.pinID!])
+            check("移進既有資料夾：回傳移入數量", c2.moveSelection(toFolder: dest2.id) == 2)
+            check("移進既有資料夾：兩項都在 Dest2", tm2.pins.children(of: dest2.id).count == 2 && n1.pinID != nil)
         }
         c2.window.close()
         try await dragGeometryChecks(server)

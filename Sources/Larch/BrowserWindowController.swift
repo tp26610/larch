@@ -189,12 +189,19 @@ final class BrowserWindowController: NSObject, NSTextFieldDelegate, NSWindowDele
 
     /// 多選中的列（rows 的 key：釘選節點 id 或一般 Tab id）。
     private(set) var selection = Set<UUID>()
+    private var selectionAnchor: UUID?
 
     private var allRowViews: [TabRowView] { Array(rows.values) }
 
     private func applySelection() {
-        for r in allRowViews { r.isSelected = r.selectionID.map(selection.contains) ?? false }
+        for r in allRowViews {
+            let on = r.selectionID.map(selection.contains) ?? false
+            r.isSelected = on
+            r.isInMultiSelection = on && selection.count >= 2
+        }
     }
+
+    func selectForSmoke(_ ids: Set<UUID>) { selection = ids; applySelection() }
 
     func clearSelection() {
         guard !selection.isEmpty else { return }
@@ -202,8 +209,23 @@ final class BrowserWindowController: NSObject, NSTextFieldDelegate, NSWindowDele
         applySelection()
     }
 
+    /// Shift+點擊：從錨點（上次點的列，沒有就用目前 Tab）到這一列，依側邊欄順序全選。
+    func rangeSelect(_ row: TabRowView) {
+        guard let id = row.selectionID else { return }
+        let ordered = sidebar.rowViews.compactMap { $0.selectionID }
+        let anchor = selection.isEmpty ? tabs.activeTab.map { $0.pinID ?? $0.id } : (selectionAnchor ?? tabs.activeTab.map { $0.pinID ?? $0.id })
+        guard let anchor, let a = ordered.firstIndex(of: anchor), let b = ordered.firstIndex(of: id) else {
+            toggleSelect(row)
+            return
+        }
+        selection = Set(ordered[min(a, b)...max(a, b)])
+        selectionAnchor = anchor
+        applySelection()
+    }
+
     private func toggleSelect(_ row: TabRowView) {
         guard let id = row.selectionID else { return }
+        selectionAnchor = id
         // 第一次 ⌘+點擊時，把目前的 Tab 一併納入（它本來就是被選取的那列）。
         if selection.isEmpty, let cur = tabs.activeTab, let curID = cur.pinID ?? Optional(cur.id), curID != id { selection.insert(curID) }
         if selection.contains(id) { selection.remove(id) } else { selection.insert(id) }
@@ -230,6 +252,21 @@ final class BrowserWindowController: NSObject, NSTextFieldDelegate, NSWindowDele
     }
 
     func finishRenameForSmoke(_ id: UUID) { folderRows[id]?.finishRename(commit: false) }
+
+    /// 把多選項目移進既有資料夾並展開它。
+    @discardableResult
+    func moveSelection(toFolder folderID: UUID) -> Int {
+        let items = selectedItems()
+        selection.removeAll()
+        let n = tabs.moveIntoFolder(tabs: items.tabs, pinNodes: items.pins, folder: folderID)
+        if n > 0 { tabs.pins.setExpanded(folderID, true) }
+        applySelection()
+        return n
+    }
+
+    @objc private func moveSelectionToFolderClicked(_ sender: NSMenuItem) {
+        if let id = sender.representedObject as? UUID { moveSelection(toFolder: id) }
+    }
 
     @objc private func groupSelectionClicked(_ sender: NSMenuItem?) { groupSelectionIntoFolder() }
 
@@ -264,6 +301,7 @@ final class BrowserWindowController: NSObject, NSTextFieldDelegate, NSWindowDele
             if let pin = row.pin { self.tabs.activatePin(pin) } else if let tab = row.tab { self.tabs.select(tab) }
         }
         row.onToggleSelect = { [weak self] row in self?.toggleSelect(row) }
+        row.onRangeSelect = { [weak self] row in self?.rangeSelect(row) }
         row.onClose = { [weak self] row in
             if let tab = row.tab { self?.tabs.close(tab) } else if let pin = row.pin, let self { self.tabs.unpin(pin) }
         }
@@ -297,6 +335,20 @@ final class BrowserWindowController: NSObject, NSTextFieldDelegate, NSWindowDele
         let m = NSMenu()
         if selection.count >= 2, let id = row.selectionID, selection.contains(id) {
             m.addItem(menuItem("Move \(selection.count) Tabs to New Folder", #selector(groupSelectionClicked(_:))))
+            var folders: [(PinNode, Int)] = []
+            func walk(_ nodes: [PinNode], _ depth: Int) {
+                for n in nodes where n.isFolder { folders.append((n, depth)); walk(n.children, depth + 1) }
+            }
+            walk(tabs.pins.roots, 0)
+            if !folders.isEmpty {
+                let sub = NSMenu()
+                for (n, depth) in folders {
+                    sub.addItem(menuItem(String(repeating: "    ", count: depth) + n.title, #selector(moveSelectionToFolderClicked(_:)), id: n.id))
+                }
+                let parent = NSMenuItem(title: "Move \(selection.count) Tabs to Folder", action: nil, keyEquivalent: "")
+                parent.submenu = sub
+                m.addItem(parent)
+            }
             m.addItem(menuItem("Close \(selection.count) Tabs", #selector(closeSelectionClicked(_:))))
             return m
         }
@@ -443,7 +495,7 @@ final class BrowserWindowController: NSObject, NSTextFieldDelegate, NSWindowDele
         case .tab(let id)?:
             guard let i = regular.firstIndex(where: { $0.id == id }) else { return nil }
             // 另一個一般 Tab 拖到中間（25%~75%）→ 並排顯示（Split View），兩側維持原本的重排行為。
-            if case .tab(let draggedID) = dragged, draggedID != id, f >= 0.25, f <= 0.75 {
+            if case .tab(let draggedID) = dragged, draggedID != id, !isMultiDrag(dragged), f >= 0.25, f <= 0.75 {
                 return DropPlan(indicator: .into) { [weak self] in self?.execute(dragged, .split(id)) }
             }
             if f < 0.5 { return regularDest(before: id, .before) }
@@ -451,7 +503,49 @@ final class BrowserWindowController: NSObject, NSTextFieldDelegate, NSWindowDele
         }
     }
 
+    private func isMultiDrag(_ dragged: SidebarItem) -> Bool {
+        switch dragged {
+        case .tab(let id), .pin(let id): return selection.count >= 2 && selection.contains(id)
+        case .divider: return false
+        }
+    }
+
+    /// 拖曳的列在多選中時，整批一起放（只支援放進釘選區 / 重排一般區；並排不適用）。
+    private func executeSelection(_ dest: DropDest) -> Bool {
+        let items = selectedItems()
+        switch dest {
+        case .pins(let parent, let index):
+            selection.removeAll()
+            var idx = index
+            for node in items.pins where pins_move(node.id, parent, idx) { idx = (tabs.pins.find(node.id)?.index ?? idx) + 1 }
+            for t in items.tabs {
+                if let n = tabs.pin(t, parent: parent, index: idx) { idx = (tabs.pins.find(n.id)?.index ?? idx) + 1 }
+            }
+            if let parent { tabs.pins.setExpanded(parent, true) }
+            applySelection()
+            return true
+        case .regular(let before):
+            let regular = tabs.tabs.filter { $0.pinID == nil }
+            var target = before
+            if let b = target, selection.contains(b), let i = regular.firstIndex(where: { $0.id == b }) {
+                target = regular[(i + 1)...].first { !selection.contains($0.id) }?.id
+            }
+            selection.removeAll()
+            for node in items.pins { execute(.pin(node.id), .regular(before: target)) }
+            for t in items.tabs { execute(.tab(t.id), .regular(before: target)) }
+            applySelection()
+            return true
+        case .split:
+            return false
+        }
+    }
+
+    private func pins_move(_ id: UUID, _ parent: UUID?, _ index: Int) -> Bool {
+        tabs.pins.move(id, toParent: parent, index: index)
+    }
+
     func execute(_ dragged: SidebarItem, _ dest: DropDest) {
+        if isMultiDrag(dragged), executeSelection(dest) { return }
         switch (dragged, dest) {
         case (.tab(let id), .pins(let parent, let index)):
             if let t = tab(withID: id) { tabs.pin(t, parent: parent, index: index) }

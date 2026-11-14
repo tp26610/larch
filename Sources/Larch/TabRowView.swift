@@ -12,6 +12,10 @@ final class TabRowView: NSView, NSTextFieldDelegate, SidebarRow {
     var onSelect: ((TabRowView) -> Void)?
     /// ⌘+點擊：加入/移出多選。
     var onToggleSelect: ((TabRowView) -> Void)?
+    var onRangeSelect: ((TabRowView) -> Void)?
+    /// 這列在 ≥2 項的多選中：一般點擊延到放開滑鼠才生效，才能拖曳整批。
+    var isInMultiSelection = false
+    private var pendingClick = false
     var onClose: ((TabRowView) -> Void)?
     var onRename: ((TabRowView, String) -> Void)?
     var onMenu: ((TabRowView) -> NSMenu?)?
@@ -188,8 +192,13 @@ final class TabRowView: NSView, NSTextFieldDelegate, SidebarRow {
 
     override func mouseDown(with event: NSEvent) {
         downPoint = event.locationInWindow
+        pendingClick = false
         if event.modifierFlags.contains(.command) {
             onToggleSelect?(self)
+        } else if event.modifierFlags.contains(.shift) {
+            onRangeSelect?(self)
+        } else if isInMultiSelection && event.clickCount == 1 {
+            pendingClick = true
         } else if event.clickCount >= 2 {
             beginRename()
         } else {
@@ -197,9 +206,14 @@ final class TabRowView: NSView, NSTextFieldDelegate, SidebarRow {
         }
     }
 
+    override func mouseUp(with event: NSEvent) {
+        if pendingClick { pendingClick = false; onSelect?(self) }
+    }
+
     override func mouseDragged(with event: NSEvent) {
         guard let d = downPoint, hypot(event.locationInWindow.x - d.x, event.locationInWindow.y - d.y) > 4, finishedEditing else { return }
         downPoint = nil
+        pendingClick = false
         SidebarDragSource.begin(from: self, event: event)
     }
 
